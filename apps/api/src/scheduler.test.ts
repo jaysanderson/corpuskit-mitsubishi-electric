@@ -54,7 +54,10 @@ const { EnrichmentStore } = await import('./enrichments.ts')
 const { TenantStore } = await import('./tenants.ts')
 
 const freshTenants = () =>
-  new TenantStore({ TENANTS_PATH: `${Deno.makeTempDirSync()}/tenants.json` })
+  new TenantStore({
+    TENANTS_PATH: `${Deno.makeTempDirSync()}/tenants.json`,
+    SHOWCASE_PORTALS: 'marine,grains',
+  })
 
 Deno.test('maintenance skips read-only content jobs, agent runs when agents are disabled, and all suspended portal jobs', async () => {
   const db = new LocalRbacDatabase(':memory:')
@@ -332,7 +335,7 @@ Deno.test('buildApp routes HTTP watch writes through the exact WatchStore instan
     rbac,
     configuredTenantId: 'tenant-1',
     audience: 'corpuskit',
-    breakGlass: rbac.breakGlassService({ environment: 'production' }),
+    breakGlass: rbac.breakGlassService({}),
     requestContext: watchContext,
     audit: { append: () => {}, read: () => [] },
     provider: stubProvider as never,
@@ -365,7 +368,7 @@ Deno.test(
       rbac,
       configuredTenantId: 'tenant-1',
       audience: 'corpuskit',
-      breakGlass: rbac.breakGlassService({ environment: 'production' }),
+      breakGlass: rbac.breakGlassService({}),
       requestContext: watchContext,
       audit: { append: () => {}, read: () => [] },
       provider: stubProvider as never,
@@ -547,7 +550,7 @@ Deno.test(
   },
 )
 
-Deno.test('provider failures propagate from watches and enrichment into system failure records', async () => {
+Deno.test('provider failures in watches and enrichment reach the system failure records without stopping the pass', async () => {
   const db = new LocalRbacDatabase(':memory:')
   try {
     const rbac = new RbacState(db)
@@ -572,8 +575,11 @@ Deno.test('provider failures propagate from watches and enrichment into system f
         throw new Error('private provider fixture')
       },
     } as unknown as AragProvider
+    // Other tests in this file share the data directory, so count every saved watch.
+    const saved = tenants.list().reduce((n, t) => n + watches.list(t.slug).length, 0)
     await expect(runSystemMaintenance(management, stores, '400', ['watch'])).rejects.toThrow()
-    expect(searches).toBe(1)
+    // Each watch is its own unit: one failing search no longer stops the ones after it.
+    expect(searches).toBe(saved)
     await expect(runSystemMaintenance(management, stores, '400', ['enrichment'])).rejects.toThrow()
     const events = rbac.audit.read({ scope: { kind: 'platform' } })
     for (const job of ['watch', 'enrichment']) {

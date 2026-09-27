@@ -39,7 +39,10 @@ const { SourceStore } = await import('./stores.ts')
 const { TenantStore } = await import('./tenants.ts')
 
 const freshTenants = () =>
-  new TenantStore({ TENANTS_PATH: `${Deno.makeTempDirSync()}/tenants.json` })
+  new TenantStore({
+    TENANTS_PATH: `${Deno.makeTempDirSync()}/tenants.json`,
+    SHOWCASE_PORTALS: 'marine,grains',
+  })
 
 const PASSCODE = 'test-passcode'
 const config = { slug: 'marine' } as TenantConfig
@@ -375,7 +378,7 @@ describe('admin source routes', () => {
       configuredTenantId: 'tenant-1',
       audience: 'corpuskit',
       audit: rbac.audit,
-      breakGlass: rbac.breakGlassService({ passcode: PASSCODE }),
+      breakGlass: rbac.breakGlassService({ passcode: PASSCODE, explicitFlag: 'true' }),
       requestContext: () => ({
         requestId: crypto.randomUUID(),
         session: sessionFor('curator', 'marine', Date.now()),

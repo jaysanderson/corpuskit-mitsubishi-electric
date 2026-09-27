@@ -1,5 +1,9 @@
 import { expect } from '@std/expect'
-import { breakGlassEnabled, BreakGlassService } from './break-glass.ts'
+import {
+  breakGlassConfigurationWarning,
+  breakGlassEnabled,
+  BreakGlassService,
+} from './break-glass.ts'
 import { AuditWriteError } from './audit.ts'
 import { LocalRbacDatabase } from './rbac-local.ts'
 import { RbacState } from './rbac-state.ts'
@@ -14,17 +18,30 @@ const request = (passcode = 'wrong') =>
     },
   })
 const context = () => ({ requestId: crypto.randomUUID(), clientIp: '192.0.2.1', session: null })
-const policy = { passcode: 'test-only-passcode', environment: 'development' }
+const policy = { passcode: 'test-only-passcode', explicitFlag: 'true' }
 
-Deno.test('break-glass capability follows the full D5 configuration matrix', () => {
+Deno.test('break-glass is on only with a passcode and the exact explicit flag', () => {
   for (const configured of [false, true]) {
-    for (const environment of [undefined, '', 'production', 'development', 'Production']) {
-      for (const flag of [undefined, '', 'false', 'TRUE', 'true']) {
-        expect(breakGlassEnabled(configured, environment, flag))
-          .toBe(configured && (flag === 'true' || environment !== 'production'))
-      }
+    for (const flag of [undefined, '', 'false', 'TRUE', ' true', '1', 'yes', 'true']) {
+      expect(breakGlassEnabled(configured, flag)).toBe(configured && flag === 'true')
     }
   }
+})
+
+Deno.test('a passcode without the flag, or the flag without a passcode, warns at start-up', () => {
+  const passcode = 'never-logged-passcode'
+  for (const flag of [undefined, '', 'false', 'TRUE']) {
+    const warning = breakGlassConfigurationWarning({
+      ADMIN_PASSCODE: passcode,
+      ADMIN_BREAK_GLASS: flag,
+    })
+    expect(warning).toContain('ADMIN_BREAK_GLASS')
+    expect(warning).not.toContain(passcode)
+  }
+  expect(breakGlassConfigurationWarning({ ADMIN_BREAK_GLASS: 'true' })).toContain('ADMIN_PASSCODE')
+  expect(breakGlassConfigurationWarning({ ADMIN_PASSCODE: passcode, ADMIN_BREAK_GLASS: 'true' }))
+    .toBeNull()
+  expect(breakGlassConfigurationWarning({})).toBeNull()
 })
 
 Deno.test('break-glass fifth failure locks atomically and exact expiry restores eligibility', async () => {
@@ -67,6 +84,30 @@ Deno.test('break-glass fifth failure locks atomically and exact expiry restores 
   }
 })
 
+Deno.test('break-glass failures from one IPv6 /64 lock the whole /64', async () => {
+  const f = rbacFixture()
+  try {
+    const service = f.state.breakGlassService(policy)
+    for (let i = 1; i <= 5; i++) {
+      await service.authorise(request(), { ...context(), clientIp: `2001:db8:1:2::${i}` })
+    }
+    expect(
+      await service.authorise(request(policy.passcode), {
+        ...context(),
+        clientIp: '2001:db8:1:2::abcd',
+      }),
+    ).toMatchObject({ ok: false, code: 'locked' })
+    expect(
+      await service.authorise(request(policy.passcode), {
+        ...context(),
+        clientIp: '2001:db8:1:3::1',
+      }),
+    ).toMatchObject({ ok: true })
+  } finally {
+    f.close()
+  }
+})
+
 Deno.test('break-glass failures roll out of the ten minute window and do not use forwarding headers', async () => {
   const f = rbacFixture()
   try {
@@ -83,7 +124,7 @@ Deno.test('break-glass failures roll out of the ten minute window and do not use
     )
       .toMatchObject({ ok: false, code: 'invalid_passcode' })
     expect(
-      await f.state.breakGlassService({ ...policy, environment: 'production' }).authorise(
+      await f.state.breakGlassService({ passcode: policy.passcode }).authorise(
         request(policy.passcode),
         context(),
       ),

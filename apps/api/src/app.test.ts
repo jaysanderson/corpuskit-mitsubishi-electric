@@ -180,7 +180,10 @@ function buildApp(options: BuildAppOptions & { adminPasscode?: string }) {
     configuredTenantId: 'tenant-1',
     audience: 'corpuskit',
     audit: rbac.audit,
-    breakGlass: rbac.breakGlassService({ passcode: options.adminPasscode }),
+    breakGlass: rbac.breakGlassService({
+      passcode: options.adminPasscode,
+      explicitFlag: options.adminPasscode ? 'true' : undefined,
+    }),
     requestContext: options.requestContext ?? (() => ({
       requestId: crypto.randomUUID(),
       session: null,
@@ -862,7 +865,7 @@ describe('exact admin gate', () => {
       provider: new StubProvider(),
       tenants: freshTenants(),
       audit: rbac.audit,
-      breakGlass: rbac.breakGlassService({ passcode: 'gate-fixture' }),
+      breakGlass: rbac.breakGlassService({ passcode: 'gate-fixture', explicitFlag: 'true' }),
       requestContext: () => ({ ...context, denialAudited: false }),
     })
     return { db, rbac, context, app }
@@ -1996,7 +1999,10 @@ describe('GET /api/health', () => {
     try {
       const config = { ...freshTenants().get('marine')!, slug, accessMode: 'restricted' }
       Deno.writeTextFileSync(`${dir}/tenants.json`, JSON.stringify({ custom: { [slug]: config } }))
-      const tenants = new TenantStore({ TENANTS_PATH: `${dir}/tenants.json` })
+      const tenants = new TenantStore({
+        TENANTS_PATH: `${dir}/tenants.json`,
+        SHOWCASE_PORTALS: 'marine,grains',
+      })
       expect(tenants.get(slug)?.accessMode).toBe('restricted')
       const provider = new Proxy(new StubProvider(), {
         get(target, property, receiver) {
@@ -2149,9 +2155,9 @@ describe('appearance (typography, shape, branding fonts)', () => {
 
   it('persists the choice across a store reload', () => {
     const path = `${Deno.makeTempDirSync()}/tenants.json`
-    const store = new TenantStore({ TENANTS_PATH: path })
+    const store = new TenantStore({ TENANTS_PATH: path, SHOWCASE_PORTALS: 'marine,grains' })
     store.patchBranding('marine', { typography: 'lexend-zilla', shape: 'rounded' })
-    const reloaded = new TenantStore({ TENANTS_PATH: path })
+    const reloaded = new TenantStore({ TENANTS_PATH: path, SHOWCASE_PORTALS: 'marine,grains' })
     expect(reloaded.get('marine')?.branding.typography).toBe('lexend-zilla')
     expect(reloaded.get('marine')?.branding.shape).toBe('rounded')
   })
@@ -2388,7 +2394,7 @@ describe('rate limiting on anonymous LLM-spend routes', () => {
     const ask = () =>
       app.request('/api/t/marine/ask', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'fly-client-ip': '203.0.113.5' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ query: 'What is known about abalone stock health?' }),
       })
 
@@ -2401,21 +2407,34 @@ describe('rate limiting on anonymous LLM-spend routes', () => {
     expect(Number(third.headers.get('retry-after'))).toBeGreaterThan(0)
   })
 
-  it('isolates the limit per client IP - a different caller is unaffected', async () => {
+  it('isolates the limit per client address - a different caller is unaffected', async () => {
+    // The address the runtime reported for each request, as ingress supplies it.
+    const peers = new WeakMap<Request, string>()
     const app = buildApp({
       provider: new StubProvider(),
       tenants: freshTenants(),
       rateLimitAskPerMin: 1,
+      requestContext: (request) => ({
+        requestId: crypto.randomUUID(),
+        session: null,
+        clientIp: peers.get(request),
+        coarseAdminEligible: false,
+      }),
     })
-    const askAs = (ip: string) =>
-      app.request('/api/t/marine/ask', {
+    const askAs = (ip: string, headers: Record<string, string> = {}) => {
+      const request = new Request('http://localhost/api/t/marine/ask', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'fly-client-ip': ip },
+        headers: { 'content-type': 'application/json', ...headers },
         body: JSON.stringify({ query: 'What is known about abalone stock health?' }),
       })
+      peers.set(request, ip)
+      return app.fetch(request)
+    }
 
     expect((await askAs('203.0.113.1')).status).toBe(200)
     expect((await askAs('203.0.113.1')).status).toBe(429)
+    // An address header the caller writes itself is not its address.
+    expect((await askAs('203.0.113.1', { 'fly-client-ip': '203.0.113.7' })).status).toBe(429)
     expect((await askAs('203.0.113.2')).status).toBe(200)
   })
 
@@ -2429,7 +2448,7 @@ describe('rate limiting on anonymous LLM-spend routes', () => {
     const askEstate = () =>
       app.request('/api/ask-estate', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'fly-client-ip': '203.0.113.9' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ query: 'What is known about abalone stock health?' }),
       })
 
@@ -2443,11 +2462,14 @@ describe('rate limiting on anonymous LLM-spend routes', () => {
       provider: new StubProvider(),
       tenants: freshTenants(),
       rateLimitAskPerMin: 0,
+      // The anonymous per-portal limits are separate settings, turned off here as well.
+      rateLimitAnonPortalAskPerMin: 0,
+      rateLimitAnonAddressAskPerMin: 0,
     })
     const ask = () =>
       app.request('/api/t/marine/ask', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'fly-client-ip': '203.0.113.5' },
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ query: 'What is known about abalone stock health?' }),
       })
 
@@ -2464,7 +2486,7 @@ describe('rate limiting on anonymous LLM-spend routes', () => {
       adminPasscode: passcode,
       rateLimitAskPerMin: 1,
     })
-    const headers = { 'x-admin-passcode': passcode, 'fly-client-ip': '203.0.113.5' }
+    const headers = { 'x-admin-passcode': passcode }
 
     for (let i = 0; i < 5; i++) {
       const response = await app.request('/api/admin/overview', { headers })
@@ -2988,11 +3010,7 @@ describe('rate limiting per browser id', () => {
     const askAs = (client: string) =>
       app.request('/api/t/marine/ask', {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'fly-client-ip': '203.0.113.9',
-          'x-rp-client': client,
-        },
+        headers: { 'content-type': 'application/json', 'x-rp-client': client },
         body: JSON.stringify({ query: 'What is known about abalone stock health?' }),
       })
 

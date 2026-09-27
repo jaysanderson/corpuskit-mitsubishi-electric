@@ -215,6 +215,7 @@ import { passageDenominators, unusedReferences } from './synthesis-check.ts'
 import {
   authorLine,
   isCatalogueAuthor,
+  looksLikeAuthorQuery,
   lookupOf,
   metadataHit,
   researcherLabel,
@@ -315,10 +316,13 @@ import {
   type SuggestionStoreApi,
 } from './interrogate.ts'
 import {
-  clientIp,
+  addressKey,
+  admitAll,
   clientKey,
   rateLimit,
-  rateLimitLayered,
+  rateLimited,
+  type RateLimitEntry,
+  releaseAll,
   SlidingWindowLimiter,
 } from './rate-limit.ts'
 import {
@@ -1034,15 +1038,23 @@ export interface BuildAppOptions {
    * may delete it; null turns that off. Defaults to env OPERATOR_DELETE_AFTER_DAYS.
    */
   operatorDeleteAfterDays?: number | null
-  /** Requests/min/IP for the paid-LLM routes (ask, generate, summarize, subqueries, verdicts,
-   *  synthesise). Defaults to env RATE_LIMIT_ASK_PER_MIN, or 20. 0 disables. */
+  /** Requests/min per browser, inside its address, for the paid-LLM routes (ask, generate,
+   *  summarize, subqueries, verdicts, synthesise). Defaults to env RATE_LIMIT_ASK_PER_MIN, or 20.
+   *  0 disables. */
   rateLimitAskPerMin?: number
-  /** Wider per-address cap behind the per-client limit (default 5x ask limit). */
+  /** Wider per-address cap behind the per-browser limit. Defaults to env
+   *  RATE_LIMIT_ASK_PER_MIN_IP, or 5x the ask limit. 0 disables. */
   rateLimitAskPerMinPerIp?: number
   /** Answer ratings a minute per address and portal; 0 turns the limit off. */
   rateLimitFeedbackPerMin?: number
-  /** Requests/min/IP for POST /api/ask-estate, which fans one request across every tenant.
-   *  Defaults to env RATE_LIMIT_ESTATE_PER_MIN, or 6. 0 disables. */
+  /** Anonymous asks per minute on each portal, from every address together. Defaults to env
+   *  RATE_LIMIT_ANON_PORTAL_ASK_PER_MIN, or 30. 0 disables. */
+  rateLimitAnonPortalAskPerMin?: number
+  /** Anonymous asks per minute one address may make on each portal, its share of the portal's
+   *  ceiling. Defaults to env RATE_LIMIT_ANON_ADDRESS_ASK_PER_MIN, or 10. 0 disables. */
+  rateLimitAnonAddressAskPerMin?: number
+  /** Requests/min per address for POST /api/ask-estate, which fans one request across every
+   *  tenant. Defaults to env RATE_LIMIT_ESTATE_PER_MIN, or 6. 0 disables. */
   rateLimitEstatePerMin?: number
   /** Authentication attempts/min/IP at the MCP endpoint. Defaults to 60. 0 disables. */
   rateLimitMcpAuthPerMin?: number
@@ -1439,7 +1451,13 @@ export function buildApp(opts: BuildAppOptions): Hono {
           if (allowed) targets.push(config)
           return allowed
         })
-        if (targets.length === 0) return deny({ kind: 'platform' })
+        if (targets.length === 0) {
+          // The portal list shows what the caller may see, and seeing none is not a refusal: an
+          // empty list says nothing a refusal would not. A cross-portal ask with nowhere to ask
+          // is still refused.
+          if (declaration.path === '/api/tenants') return targets
+          return deny({ kind: 'platform' })
+        }
         // Terminal guards run only after the complete candidate set is filtered.
         if (selected) {
           try {
@@ -1755,32 +1773,94 @@ export function buildApp(opts: BuildAppOptions): Hono {
   // Publishing this source open publishes the recipe for draining the
   // connected ARAG account unless every such route is throttled per caller.
   // Admin routes are passcode-gated separately and are NOT rate limited here.
+  // Every key starts from the address the runtime reported for the request,
+  // never from a header the caller sets.
   const askPerMin = opts.rateLimitAskPerMin ??
     Number(process.env.RATE_LIMIT_ASK_PER_MIN ?? 20)
   const estatePerMin = opts.rateLimitEstatePerMin ??
     Number(process.env.RATE_LIMIT_ESTATE_PER_MIN ?? 6)
   const expensiveLimiter = new SlidingWindowLimiter({ limit: askPerMin, windowMs: 60_000 })
   const estateLimiter = new SlidingWindowLimiter({ limit: estatePerMin, windowMs: 60_000 })
-  // Per browser first (the web app's `x-rp-client` id), so a ward of users
-  // behind one NAT address do not share a single budget; a second, wider
-  // per-address bucket still caps a caller that mints ids to escape it.
+  // Per browser first (the web app's `x-rp-client` id, inside its address), so
+  // a ward of users behind one NAT address do not share a single budget; a
+  // second, wider per-address bucket caps what minting ids can add up to.
   const askPerMinPerIp = opts.rateLimitAskPerMinPerIp ??
     Number(process.env.RATE_LIMIT_ASK_PER_MIN_IP ?? askPerMin * 5)
   const expensiveIpLimiter = new SlidingWindowLimiter({ limit: askPerMinPerIp, windowMs: 60_000 })
-  const expensiveRateLimit = infrastructureHandler(rateLimitLayered([
-    { limiter: expensiveLimiter, keyFn: clientKey },
-    { limiter: expensiveIpLimiter, keyFn: clientIp },
-  ]))
-  const estateRateLimit = infrastructureHandler(rateLimit(estateLimiter, clientIp))
+  // Every anonymous caller of a portal together: however many addresses a caller spreads its
+  // asks across, a portal's paid answers to anonymous visitors stay within this rate.
+  const anonPortalAsksPerMin = opts.rateLimitAnonPortalAskPerMin ??
+    Number(process.env.RATE_LIMIT_ANON_PORTAL_ASK_PER_MIN ?? 30)
+  const anonPortalLimiter = new SlidingWindowLimiter({
+    limit: anonPortalAsksPerMin,
+    windowMs: 60_000,
+  })
+  // One address's share of each portal's anonymous asks, so no single address can take them all.
+  const anonAddressAsksPerMin = opts.rateLimitAnonAddressAskPerMin ??
+    Number(process.env.RATE_LIMIT_ANON_ADDRESS_ASK_PER_MIN ?? 10)
+  const anonAddressLimiter = new SlidingWindowLimiter({
+    limit: anonAddressAsksPerMin,
+    windowMs: 60_000,
+  })
+  /** The anonymous buckets an ask on `slug` from `address` counts against. */
+  const anonymousEntries = (slug: string, address: string | undefined): RateLimitEntry[] => [
+    { limiter: anonPortalLimiter, key: slug },
+    { limiter: anonAddressLimiter, key: `${slug}|${addressKey(address)}` },
+  ]
+  const callerAddress = (c: Context) => requestContext(c.req.raw).clientIp
+  const anonymousCaller = (c: Context) => requestContext(c.req.raw).actor?.kind === 'anonymous'
+  /** The buckets a request's paid answers count against: `asks` answers, on `portals`. */
+  const askEntries = (
+    c: Context,
+    asks: number,
+    portals: readonly string[],
+  ): RateLimitEntry[] => [
+    {
+      limiter: expensiveLimiter,
+      key: clientKey(callerAddress(c), c.req.header('x-rp-client')),
+      weight: asks,
+    },
+    { limiter: expensiveIpLimiter, key: addressKey(callerAddress(c)), weight: asks },
+    ...(anonymousCaller(c)
+      ? portals.flatMap((slug) => anonymousEntries(slug, callerAddress(c)))
+      : []),
+  ]
+  const expensiveRateLimit = infrastructureHandler(async (c, next) => {
+    let declaration: Declaration | undefined
+    try {
+      declaration = matchedDeclaration(c)
+    } catch { /* The guard has already refused an undeclared route. */ }
+    const slug = c.req.param('slug')
+    // Only a route that counts as an ask (not one accompanying an ask) takes a portal's turn.
+    const counted = declaration !== undefined && askUse(declaration) === 'count' && slug
+    const admitted = admitAll(askEntries(c, 1, counted ? [slug] : []))
+    if (!admitted.allowed) return rateLimited(c, admitted.retryAfterSec)
+    await next()
+    // A refused request (invalid input, or a refusal after the guard) gives the portal its
+    // anonymous turn back, as it gives back its daily ask: it cost the portal nothing, so it must
+    // not keep another reader out. The caller's own buckets keep it, to slow junk down.
+    if (c.res.status >= 400) {
+      releaseAll(admitted.receipt, (entry) => entry.limiter === anonPortalLimiter)
+    }
+  })
+  const estateRateLimit = infrastructureHandler(
+    rateLimit(estateLimiter, (c) => addressKey(callerAddress(c))),
+  )
+  /**
+   * A cross-portal ask is one answer on every portal it reaches, so it counts once per portal
+   * against the caller's buckets and each portal's anonymous ceiling: all admitted, or none.
+   */
+  const admitEstateFanOut = (c: Context, targets: readonly TenantConfig[]) =>
+    admitAll(askEntries(c, targets.length, targets.map((config) => config.slug)))
   // A rating costs nothing to send and each portal keeps a bounded number, so an unthrottled
   // caller could fill a portal's store with made-up ratings. A reader rates a few answers a
-  // minute: per address and portal, the address as the MCP limiter reads it.
+  // minute: per address and portal, the address the runtime reported, as every limit uses.
   const feedbackPerMin = opts.rateLimitFeedbackPerMin ??
     Number(process.env.RATE_LIMIT_FEEDBACK_PER_MIN ?? 30)
   const feedbackLimiter = new SlidingWindowLimiter({ limit: feedbackPerMin, windowMs: 60_000 })
   const feedbackRateLimit = infrastructureHandler(rateLimit(
     feedbackLimiter,
-    (c) => `${c.req.header('cf-connecting-ip') ?? clientIp(c)}|${c.req.param('slug') ?? ''}`,
+    (c) => `${addressKey(callerAddress(c))}|${c.req.param('slug') ?? ''}`,
   ))
 
   // Baseline security headers on every response. Deliberately narrow for now:
@@ -1849,7 +1929,10 @@ export function buildApp(opts: BuildAppOptions): Hono {
   })
 
   // MCP credential failures are rate limited before the guard verifies any bearer (D13).
-  registerMcpAuthRateLimit(app, { rateLimitPerMin: opts.rateLimitMcpAuthPerMin })
+  registerMcpAuthRateLimit(app, {
+    rateLimitPerMin: opts.rateLimitMcpAuthPerMin,
+    clientAddress: callerAddress,
+  })
 
   // Every API operation is checked before any route-specific middleware or handler. The rest of
   // the request runs with the caller's platform authority on record for the lifecycle guard.
@@ -2123,6 +2206,7 @@ export function buildApp(opts: BuildAppOptions): Hono {
     notFound: adminNotFound,
   })
 
+  const toolGuard = lifecycleToolGuard(lifecycle, () => opts.now?.() ?? Date.now())
   registerMcpRoutes(app, {
     localMutations: opts.localMutations,
     provider,
@@ -2132,8 +2216,21 @@ export function buildApp(opts: BuildAppOptions): Hono {
     requestContext,
     authorityDependencies,
     authorise: authoriseDeclared,
-    // The MCP transport route is already guarded; each tool call is checked again on its own.
-    beforeTool: lifecycleToolGuard(lifecycle, () => opts.now?.() ?? Date.now()),
+    // The MCP transport route is already guarded; each tool call is checked again on its own,
+    // and an anonymous answer takes its portal's turn and its address's share as a web ask does.
+    beforeTool: (declaration, config, authority, caller) => {
+      const portal = authority.kind === 'anonymous' && askUse(declaration) === 'count'
+        ? anonymousEntries(config.slug, caller.clientIp)
+        : []
+      const refused = portal.map((entry) => entry.limiter.peek(entry.key))
+        .filter((verdict) => !verdict.allowed)
+      if (refused.length > 0) {
+        const retryAfter = Math.max(...refused.map((verdict) => verdict.retryAfterSec))
+        throw new PortalLifecycleError(429, { error: 'rate_limited', retryAfter })
+      }
+      toolGuard(declaration, config, authority)
+      admitAll(portal)
+    },
   })
 
   // Keep bookmarks for renamed routes working: a renamed route segment permanently redirects to
@@ -2375,7 +2472,7 @@ export function buildApp(opts: BuildAppOptions): Hono {
     // platform has no author index of its own.
     const identifier = parseIdentifier(parsed.data.q)
     if (identifier) {
-      const catalogue = await provider.listResources(config).catch(() => [])
+      const catalogue = await provider.listResources(config, { bounded: true }).catch(() => [])
       const hits = resolveIdentifier(catalogue, identifier)
       const label = identifier.kind === 'doi' ? 'DOI' : identifier.kind.toUpperCase()
       return c.json(merchandiseSearchResults(enrichments, config.slug, {
@@ -2391,11 +2488,14 @@ export function buildApp(opts: BuildAppOptions): Hono {
         ...(route ? { route } : {}),
       }))
     }
-    const catalogue = await provider.listResources(config).catch(() => [])
     // A surname, or a person's name in any of its forms ("Wilma O'Neill",
     // "W O'Neill", "ONeill WJ"): the author's papers from the catalogue. A
     // name whose surname the catalogue knows under another initial is an
     // empty lookup - listed as retrieval finds it, never answered (D3-04).
+    // Any other query is a plain search, which never waits on the catalogue.
+    const catalogue = looksLikeAuthorQuery(parsed.data.q)
+      ? await provider.listResources(config, { bounded: true }).catch(() => [])
+      : []
     const byAuthor = resolveAuthor(catalogue, parsed.data.q) ??
       resolvePersonName(catalogue, parsed.data.q)
     const searchIntent = intentParam ?? route?.intent
@@ -3678,6 +3778,8 @@ export function buildApp(opts: BuildAppOptions): Hono {
     if (!parsed.success) return c.json({ error: 'invalid_query' }, 400)
     // Selecting the portals admits the ask on every one of them or on none.
     const targets = await requestAuthorisation(c).aggregate(parsed.data.slugs)
+    const fanOut = admitEstateFanOut(c, targets)
+    if (!fanOut.allowed) return rateLimited(c, fanOut.retryAfterSec)
     return streamSSE(c, async (stream) => {
       let chain: Promise<void> = Promise.resolve()
       const write = (slug: string, event: unknown) => {
@@ -6163,6 +6265,20 @@ export function buildApp(opts: BuildAppOptions): Hono {
             })
         }
       }
+      // The grounding probe needs no catalogue, so it starts before the listing is read (see the
+      // grounding gate below), as the classifier does above.
+      const probe = async (intent: string | undefined) => {
+        const found = await provider.search(config, query, { intent, pageSize: 8 })
+        const best = found.resources.reduce((m, r) => Math.max(m, r.relevance), 0)
+        return { resources: found.resources, best }
+      }
+      const probedIntent = askOpts.intent
+      const probePending = !documentScope && firstTurn ? probe(probedIntent) : null
+      // The gate is best-effort and its real await is below, inside a try.
+      // A handler is attached here so a platform failure between the two
+      // (the pin's own find awaits in between) is never an unhandled
+      // rejection, which takes the whole server down.
+      probePending?.catch(() => {})
       // The study-name guard: a paper the question names ("the BREATHS
       // trial", "UMPIRE", a quoted title) is pinned into the grounding set
       // and leads the sources, whatever retrieval ranks first.
@@ -6178,7 +6294,7 @@ export function buildApp(opts: BuildAppOptions): Hono {
       const merchandisedCatalogue = documentScope ? [] : merchandiseSummaries(
         enrichments,
         config.slug,
-        await provider.listResources(config).catch(() => []),
+        await provider.listResources(config, { bounded: true }).catch(() => []),
       )
       const pinned = !documentScope
         ? matchStudies(query, merchandisedCatalogue, lexicon)
@@ -6289,18 +6405,6 @@ export function buildApp(opts: BuildAppOptions): Hono {
       const STRONG_MATCH = 0.9
       /** Closest matches previewed before generation, and named in a decline. */
       const NEAREST_SHOWN = 8
-      const probe = async (intent: string | undefined) => {
-        const found = await provider.search(config, query, { intent, pageSize: 8 })
-        const best = found.resources.reduce((m, r) => Math.max(m, r.relevance), 0)
-        return { resources: found.resources, best }
-      }
-      const probedIntent = askOpts.intent
-      const probePending = !documentScope && firstTurn ? probe(probedIntent) : null
-      // The gate is best-effort and its real await is below, inside a try.
-      // A handler is attached here so a platform failure between the two
-      // (the pin's own find awaits in between) is never an unhandled
-      // rejection, which takes the whole server down.
-      probePending?.catch(() => {})
       const pinnedPending = pinnedIds.length > 0
         ? provider.search(config, query, { resourceIds: pinnedIds, pageSize: 8 }).then(
           (found) => found.resources,

@@ -37,7 +37,10 @@ afterEach(() => {
 
 // Hermetic tenant store - tests must never read the repo's live data/tenants.json.
 const freshTenants = () =>
-  new TenantStore({ TENANTS_PATH: `${Deno.makeTempDirSync()}/tenants.json` })
+  new TenantStore({
+    TENANTS_PATH: `${Deno.makeTempDirSync()}/tenants.json`,
+    SHOWCASE_PORTALS: 'marine,grains',
+  })
 
 // buildApp requires a search/catalog RetrievalProvider even though /generate
 // never calls it - a minimal double that would fail loudly if it ever were.
@@ -118,7 +121,7 @@ function makeApp(askLines: unknown[], enrichments?: EnrichmentStore) {
     audience: fixture.audience,
     now: fixture.now,
     audit: fixture.rbac.audit,
-    breakGlass: fixture.rbac.breakGlassService({ environment: 'production' }),
+    breakGlass: fixture.rbac.breakGlassService({}),
     requestContext: () => ({
       requestId: crypto.randomUUID(),
       session,

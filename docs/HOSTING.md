@@ -754,6 +754,89 @@ events stay on record. No other Worker seeds portals.
   it does not retry automatically. A refused agent run explains that
   agents are disabled, and it does not sign the user out.
 
+## Client addresses and rate limits
+
+Paid answers to anonymous callers are rate limited, and every limit is keyed on the client
+address the runtime reports, never on a header the caller can write:
+
+- On Cloudflare, the address is `cf-connecting-ip`, which Cloudflare sets on every request.
+- On the local server, it is the TCP peer. `fly-client-ip`, `x-forwarded-for`, `x-real-ip` and
+  the like are ignored, unless `TRUST_PROXY_HOPS` says reverse proxies run in front of it.
+- With `TRUST_PROXY_HOPS=n`, the local server trusts the last `n` entries of `x-forwarded-for`,
+  which its `n` proxies append, and takes the client address from the right-most entry they
+  vouch for. Entries to the left of it were written by the client and are never read. Set it to
+  the number of proxies that each append to the header, and make sure clients cannot reach the
+  server without passing through them. It is a whole number from 0 to 10; any other value is
+  ignored with a start-up warning, and 0 or unset reads the TCP peer. Behind a proxy without it
+  (a load balancer, nginx, or a container platform's edge), every client has the proxy's address
+  and shares its limits. The Worker ignores it.
+
+The same address keys the break-glass lockout and the other per-address failure limits. Every
+per-address limit treats an IPv6 address as its /64 network, since one host is usually given a
+whole /64, and drops a port a proxy appended to the address.
+
+The limits, each per minute, with `0` turning one off:
+
+| Setting | Default | Limits |
+|---|---|---|
+| `RATE_LIMIT_ASK_PER_MIN` | 20 | Paid-answer requests from one browser inside its address. The browser is the web app's anonymous `x-rp-client` id; without one, the address itself. The id can only divide an address's allowance, never add to it. |
+| `RATE_LIMIT_ASK_PER_MIN_IP` | 5 times the above | Paid-answer requests from one address, whatever browser ids it sends. |
+| `RATE_LIMIT_ANON_PORTAL_ASK_PER_MIN` | 30 | Anonymous asks on one portal, from every address together, so spreading asks across many addresses cannot drain a portal's `asksPerDay` or the account behind it. Signed-in people and portal keys are not counted. The routes that only accompany an ask (routing, sub-questions, verdicts and follow-ups) are not asks here either. An ask refused with a status of 400 or above, such as one with invalid input, gives its turn back, so refused requests cannot keep readers out. The MCP `answer_question` tool counts the same way. |
+| `RATE_LIMIT_ANON_ADDRESS_ASK_PER_MIN` | 10 | One address's share of a portal's anonymous asks, counted and exempted as above, so no single address can take the whole portal limit. Keep it below `RATE_LIMIT_ANON_PORTAL_ASK_PER_MIN`. |
+| `RATE_LIMIT_ESTATE_PER_MIN` | 6 | Cross-portal asks (`POST /api/ask-estate`) from one address. |
+| `RATE_LIMIT_FEEDBACK_PER_MIN` | 30 | Answer ratings (`POST /api/t/:slug/feedback`) from one address on one portal. |
+
+A paid-answer route covers asks, help-assistant asks, briefings, summaries, syntheses, routing,
+sub-questions, verdicts and follow-ups. A cross-portal ask is one answer on every portal it
+reaches, so it counts once per portal against the first two limits and against each portal's
+anonymous limit, and it is admitted on all of them or on none. A request over any limit is
+answered `429 {"error":"rate_limited"}` with a `Retry-After` header, and an ask it had counted
+toward `asksPerDay` is given back.
+
+## Scheduled maintenance
+
+Once a day (the Worker's cron trigger, or a timer in the local server) the deployment runs one
+maintenance pass over every portal: auto-sync sources are synced, saved-search watches are re-run,
+and missing enrichments and suggested questions are generated. The local server runs the
+enrichment part on its own cadence (`AUTO_ENRICH_CADENCE_HOURS`, daily by default).
+
+Each source sync, each watch and each portal's enrichment and suggested-question run is its own
+unit. One failing unit never stops the others:
+
+- A unit that fails is recorded against its portal in the audit log, as a `maintenance.*` action
+  (`maintenance.source.sync`, `maintenance.watch.run`, `maintenance.enrichment.run` or
+  `maintenance.questions.run`) with outcome `failure` or `uncertain`, which the portal's
+  administrators and the platform both see. A failed source sync also records its reason on the
+  source, where Manage shows it. The pass then moves on.
+- Every job still runs. Once the pass is over, the failures are raised together as one error, so
+  the runtime records a failed invocation. It names each failed unit by job, portal and kind,
+  never by upstream detail, and it also counts a failure to remove expired answer feedback, which
+  the pass does before its jobs. Each job's platform-level `maintenance.run` record carries
+  `count`, the number of its units that failed.
+- The pass stops early only when the platform account that every portal shares answers 429
+  (a rate limit, or indexing or ingest back-pressure, which the platform measures across all its
+  knowledge boxes), in a source sync, a watch, an enrichment run or a suggested-question run. The
+  next portal would only add to the pressure, so the rest waits for the next pass. This assumes
+  every portal's knowledge box is on the same platform account; one account's 429 stops the pass
+  for portals on others as well.
+- A knowledge box that is still processing a backlog of its own (processing back-pressure, such
+  as after a bulk upload) holds back only its own portal: that portal's syncs stop with their
+  pages kept for the next pass, and the other portals carry on.
+- A page the platform does not take during a sync (a 429, a timeout or a server error) is not
+  marked as synced, so the next sync tries it again.
+- A portal whose enrichment run found its knowledge box strained (still busy after the run's
+  retries) gets no suggested-question run that pass. A suggested question that fails to generate
+  is never stored as an empty set: the resource stays without openers until a pass generates
+  them.
+- A portal with no connected knowledge box is skipped, and an empty knowledge box has nothing to
+  enrich. Neither is a failure. A [showcase portal](#showcase-portals) served without its
+  knowledge box bound is the usual case.
+- A unit stops starting new work 75 seconds after it begins and finishes what is under way, so it
+  ends inside its audited 120-second limit. Pages and enrichments it did not reach wait for the
+  next pass, and the unit is not a failure.
+- The pass starts at a different portal each day, so a portal late in the list is not always the
+  one a short pass leaves out.
+
 ## External sign-in handoff
 
 A deployment can accept a short-lived, signed identity assertion from a trusted external issuer,
@@ -941,7 +1024,7 @@ external identity source.
 
 `ENTRA_ADMIN_EMAILS` creates the first owners only when Entra is configured. An external-only
 deployment creates its first owner with one [break-glass](RBAC.md#break-glass) request. Set
-`ADMIN_PASSCODE`, and in production also `ADMIN_BREAK_GLASS=true`, then send:
+`ADMIN_PASSCODE` and `ADMIN_BREAK_GLASS=true`, then send:
 
 ```http
 POST /api/admin/people
@@ -957,8 +1040,8 @@ content-type: application/json
 ```
 
 The assignment activates when that person completes an external sign-in with the same verified
-email. After that, the owner manages access from the People screen. In production, remove
-`ADMIN_BREAK_GLASS` again unless you want to keep the emergency path available.
+email. After that, the owner manages access from the People screen. Remove `ADMIN_BREAK_GLASS`
+and `ADMIN_PASSCODE` again unless you want to keep the emergency path available.
 
 ### Rollback
 
@@ -967,6 +1050,39 @@ do not understand the `source` boundary and could apply external assignments to 
 Prefer a forward fix for this change. Do not roll back to code that ignores `source` while external
 assignment rows remain, even if external sign-in has been disabled. A code rollback does not undo
 the SQLite migration or remove those rows.
+
+## Showcase portals
+
+The two showcase portals, `marine` (Southern Waters Research Institute) and `grains` (Dryland
+Cropping Research Alliance), are fictional organisations built into every release, so the product
+can be seen working over the sample corpus in `content/seed`. A deployment serves them only when
+it names them:
+
+| Variable | Meaning |
+|---|---|
+| `SHOWCASE_PORTALS` | Comma-separated showcase portal slugs to serve, such as `marine,grains`. Unset or empty serves none. Case and spaces are ignored, and an entry that is not a showcase slug is ignored with a start-up warning that names it. |
+
+A showcase portal the deployment does not name is not a portal there at all. It is left out of
+`GET /api/tenants`, cross-portal asks, the administration overview, scheduled maintenance and
+routing, and every route under its slug, `/t/marine` and `/api/t/marine/...` included, answers as
+it does for a slug that never held a portal.
+
+- Its slug is still never given to a new portal: a portal named Marine is created as `marine-2`.
+  So naming a showcase portal later can never put it in front of a portal someone created.
+- Whatever a served showcase portal stored (overrides, a disabled flag, host aliases, research
+  records) is kept when it stops being served, and applies again if it is named once more.
+- A served showcase portal cannot be deleted (`400 not_removable`); stop serving it instead.
+- While it is not served, its host aliases are not registered hostnames, so they answer as
+  `UNKNOWN_HOSTS` says, and its knowledge-box binding and MCP keys cannot be managed. Remove its
+  aliases before you stop serving it if the hostnames still route here.
+- A record stored under a showcase slug by other means, such as a restore or a hand edit, is
+  never served as a portal of its own.
+- A deployment with no portal a caller may see, the usual state of a new one, lists none:
+  `GET /api/tenants` answers `200 []` rather than refusing.
+
+Set `SHOWCASE_PORTALS=marine,grains` for a deployment that shows the sample portals, such as a
+local development server after `deno task provision` has created their knowledge boxes. Both
+Worker configurations in this repository set it.
 
 ## Configurable platform domain
 
@@ -1001,8 +1117,10 @@ as exactly that type, without parameters (`application/pdf`, not `application/pd
 holding a comma, or one that is not a media type, is sandboxed and downloads, because a browser
 splits the header on commas and could render a later type, such as `text/html`, in place.
 
-The two seeded showcase portals, and one showcase portal created before hostnames were stored,
-receive their `corpuskit.org` hostnames when read on the `corpuskit.org` platform domain only.
+The two seeded showcase portals (when the deployment serves them, see
+[Showcase portals](#showcase-portals)), and one showcase portal created before hostnames were
+stored, receive their `corpuskit.org` hostnames when read on the `corpuskit.org` platform domain
+only.
 On any other platform domain they have no hostname until one is attached, and every new portal,
 whatever its slug, gets its hostname through hostname automation.
 
@@ -1450,7 +1568,7 @@ tenant's `assignments` are usually already zero, because deletion removed them.
 |---|---|---|
 | A body that is not empty or `{}` | 400 | `{ "error": "invalid_request" }` |
 | The slug is not a retired portal's, including one that never held a portal | 404 | `{ "error": "unknown_tenant" }` |
-| A portal serves the slug: a live, seeded or unreadable portal | 409 | `{ "error": "portal_active" }` |
+| A portal serves the slug: a live portal, including a showcase portal the deployment serves, or an unreadable one | 409 | `{ "error": "portal_active" }` |
 | The stored binding set cannot be read (see [Unavailable bindings](#unavailable-bindings)) | 503 | `{ "error": "binding_storage_invalid" }` |
 
 Each refusal of the first three kinds is audited as `portal.erase` with outcome `denied` and its

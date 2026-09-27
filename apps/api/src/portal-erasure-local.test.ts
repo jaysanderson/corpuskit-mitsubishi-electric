@@ -74,6 +74,12 @@ const BUILD_OPTIONS: Record<keyof BuildAppOptions, Classification> = {
   rateLimitAskPerMin: { noPortalRecords: 'in-memory, per client address' },
   rateLimitAskPerMinPerIp: { noPortalRecords: 'in-memory, per client address' },
   rateLimitFeedbackPerMin: { noPortalRecords: 'in-memory, per client address' },
+  rateLimitAnonPortalAskPerMin: {
+    noPortalRecords: 'in-memory counts for one minute, never stored',
+  },
+  rateLimitAnonAddressAskPerMin: {
+    noPortalRecords: 'in-memory counts for one minute, never stored',
+  },
   rateLimitEstatePerMin: { noPortalRecords: 'in-memory, per client address' },
   rateLimitMcpAuthPerMin: { noPortalRecords: 'in-memory, per client address' },
 }
@@ -109,6 +115,7 @@ Deno.test('every application store is classified, and each one holding portal re
 async function localServer() {
   const directory = Deno.makeTempDirSync({ prefix: 'portal-erasure-' })
   const env = {
+    SHOWCASE_PORTALS: 'marine,grains',
     DATA_DIR: directory,
     TENANTS_PATH: join(directory, 'tenants.json'),
     BINDINGS_PATH: join(directory, 'bindings.json'),

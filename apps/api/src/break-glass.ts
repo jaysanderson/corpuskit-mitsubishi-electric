@@ -1,9 +1,10 @@
 import { appendAudit, type AuditActor, type AuditStore, createAuditEvent } from './audit.ts'
 import type { RbacDatabase } from './rbac-state.ts'
+import { clientBucket } from './rate-limit.ts'
 
 export interface BreakGlassPolicy {
   passcode?: string
-  environment?: string
+  /** `ADMIN_BREAK_GLASS`. Only the exact string `true` turns break-glass on. */
   explicitFlag?: string
 }
 export interface BreakGlassContext {
@@ -16,12 +17,32 @@ export type BreakGlassResult =
   | { ok: true; role: 'owner'; actor: AuditActor }
   | { ok: false; code: 'unavailable' | 'invalid_passcode' | 'locked'; retryAfter?: number }
 
-export function breakGlassEnabled(
-  passcodeConfigured: boolean,
-  environment?: string,
-  explicitFlag?: string,
-): boolean {
-  return passcodeConfigured && (explicitFlag === 'true' || environment !== 'production')
+/**
+ * Break-glass is off unless the deployment turns it on explicitly with `ADMIN_BREAK_GLASS=true`
+ * and a passcode. No environment name turns it on: a missing, misspelt or non-production
+ * `ENVIRONMENT` fails closed.
+ */
+export function breakGlassEnabled(passcodeConfigured: boolean, explicitFlag?: string): boolean {
+  return passcodeConfigured && explicitFlag === 'true'
+}
+
+/**
+ * A start-up warning when the two break-glass settings disagree, so a passcode left behind is
+ * noticed. Never includes either value.
+ */
+export function breakGlassConfigurationWarning(
+  env: Record<string, string | undefined>,
+): string | null {
+  const passcode = Boolean(env.ADMIN_PASSCODE)
+  const flag = env.ADMIN_BREAK_GLASS
+  if (passcode && flag !== 'true') {
+    return 'ADMIN_PASSCODE is set but ADMIN_BREAK_GLASS is not true, so break-glass sign-in is ' +
+      'off. Remove ADMIN_PASSCODE, or set ADMIN_BREAK_GLASS=true to keep the emergency path.'
+  }
+  if (!passcode && flag === 'true') {
+    return 'ADMIN_BREAK_GLASS is true but ADMIN_PASSCODE is not set, so break-glass sign-in is off.'
+  }
+  return null
 }
 
 /** Native HMAC verification avoids data-dependent JavaScript comparison. Nothing is persisted. */
@@ -49,11 +70,7 @@ export class BreakGlassService {
     private readonly policy: BreakGlassPolicy,
     private readonly now = Date.now,
   ) {
-    this.enabled = breakGlassEnabled(
-      Boolean(policy.passcode),
-      policy.environment,
-      policy.explicitFlag,
-    )
+    this.enabled = breakGlassEnabled(Boolean(policy.passcode), policy.explicitFlag)
   }
 
   async authorise(request: Request, context: BreakGlassContext): Promise<BreakGlassResult> {
@@ -88,7 +105,8 @@ export class BreakGlassService {
         record('break_glass.failed', { code: 'unavailable' })
         return { ok: false, code: 'unavailable' }
       }
-      const ip = context.clientIp!
+      // Failures lock the caller: one address, or one IPv6 /64.
+      const ip = clientBucket(context.clientIp)!
       const lockedUntil = this.database.all<{ locked_until: number }>(
         'SELECT locked_until FROM break_glass_locks WHERE trusted_ip = ?',
         ip,

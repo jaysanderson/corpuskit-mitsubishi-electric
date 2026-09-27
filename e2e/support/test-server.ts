@@ -84,13 +84,16 @@ export function startTestServer(options: {
       pathFor: (slug: string) => `${directory}/${name}/${encodeURIComponent(slug)}.${extension}`,
     })
   const env = {
+    SHOWCASE_PORTALS: 'marine,grains',
     DATA_DIR: directory,
     TENANTS_PATH: `${directory}/tenants.json`,
     ENTRA_TENANT_ID: 'tenant-1',
     WORKER_NAME: 'corpuskit',
     ENVIRONMENT: 'test',
     ...options.loginEnv,
-    ...(options.breakGlass ? { ADMIN_PASSCODE: 'fixture-emergency-only' } : {}),
+    ...(options.breakGlass
+      ? { ADMIN_PASSCODE: 'fixture-emergency-only', ADMIN_BREAK_GLASS: 'true' }
+      : {}),
   }
   const { database, rbac } = openLocalRbac(env)
   try {
@@ -254,6 +257,8 @@ export function startTestServer(options: {
       requestContext: ingress.requestContext,
       breakGlass: ingress.breakGlass,
       rateLimitAskPerMin: 0,
+      rateLimitAnonPortalAskPerMin: 0,
+      rateLimitAnonAddressAskPerMin: 0,
       rateLimitEstatePerMin: 0,
       ...(options.apiOnly ? {} : { webDistPath: WEB_DIST }),
     })

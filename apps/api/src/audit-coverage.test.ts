@@ -66,8 +66,8 @@ Deno.test('break-glass ask withholds output until completion and fails closed on
       configuredTenantId: f.tenantId,
       audience: f.audience,
       breakGlass: f.rbac.breakGlassService({
-        environment: 'development',
         passcode: 'fixture-passcode',
+        explicitFlag: 'true',
       }),
       requestContext: () => ({
         requestId: crypto.randomUUID(),
@@ -137,11 +137,14 @@ function buildApp(options: BuildAppOptions) {
   return buildRawApp({
     ...options,
     tenants: options.tenants ??
-      new TenantStore({ TENANTS_PATH: `${Deno.makeTempDirSync()}/tenants.json` }),
+      new TenantStore({
+        TENANTS_PATH: `${Deno.makeTempDirSync()}/tenants.json`,
+        SHOWCASE_PORTALS: 'marine,grains',
+      }),
     rbac,
     configuredTenantId: 'tenant-1',
     audience: 'corpuskit',
-    breakGlass: rbac.breakGlassService({ environment: 'production' }),
+    breakGlass: rbac.breakGlassService({}),
   })
 }
 

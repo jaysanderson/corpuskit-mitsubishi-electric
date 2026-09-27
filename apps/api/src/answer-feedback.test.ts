@@ -62,7 +62,8 @@ type Role = 'viewer' | 'curator' | 'unassigned'
 interface Stack {
   name: string
   slug: string
-  as(role: Role, path: string, init?: RequestInit): Promise<Response>
+  /** A request from `role`, sent from `address` as the runtime would report it. */
+  as(role: Role, path: string, init?: RequestInit, address?: string): Promise<Response>
   feedback: FeedbackStoreApi
   insights: InsightsStoreApi
   close(): void
@@ -74,8 +75,13 @@ function durableStack(management: AragProvider): Stack {
   return {
     name: 'Durable Object',
     slug: 'a',
-    as: (role, path, init) =>
-      f.requestAs(role === 'unassigned' ? f.unassigned : f.sessionFor(role), path, init),
+    as: (role, path, init, address = '192.0.2.1') =>
+      f.requestFrom(
+        address,
+        role === 'unassigned' ? f.unassigned : f.sessionFor(role),
+        path,
+        init,
+      ),
     feedback: f.stores.feedback,
     insights: f.stores.insights,
     close: () => f.close(),
@@ -88,6 +94,7 @@ function localStack(management: AragProvider): Stack {
   const env = {
     DATA_DIR: directory,
     TENANTS_PATH: join(directory, 'tenants.json'),
+    SHOWCASE_PORTALS: 'marine,grains',
     ENTRA_TENANT_ID: 'tenant-1',
     WORKER_NAME: 'corpuskit',
   }
@@ -131,11 +138,13 @@ function localStack(management: AragProvider): Stack {
   return {
     name: 'local server',
     slug: 'marine',
-    as: (role, path, init) =>
+    as: (role, path, init, address) =>
       ingress.handle(
         new Request(`http://localhost${path}`, init),
         (request) => app.fetch(request),
-        undefined,
+        address === undefined
+          ? undefined
+          : { remoteAddr: { transport: 'tcp', hostname: address, port: 40000 } },
         fixtureSession({ oid: `local-${role}` }),
       ),
     feedback,
@@ -309,15 +318,25 @@ for (
     const s = build(management)
     try {
       const rate = (address: string, index: number) =>
-        s.as('viewer', `/api/t/${s.slug}/feedback`, {
-          ...post({
-            learningId: `learning-${address.replaceAll('.', '-')}-${
-              String(index).padStart(4, '0')
-            }`,
-            good: true,
-          }),
-          headers: { 'content-type': 'application/json', 'x-forwarded-for': address },
-        })
+        s.as(
+          'viewer',
+          `/api/t/${s.slug}/feedback`,
+          {
+            ...post({
+              learningId: `learning-${address.replaceAll('.', '-')}-${
+                String(index).padStart(4, '0')
+              }`,
+              good: true,
+            }),
+            // Address headers the caller writes itself change nothing.
+            headers: {
+              'content-type': 'application/json',
+              'x-forwarded-for': `203.0.113.${index}`,
+              'cf-connecting-ip': `198.51.100.${index}`,
+            },
+          },
+          address,
+        )
       for (let index = 0; index < 30; index++) {
         const response = await rate('192.0.2.10', index)
         expect(response.status).toBe(200)
@@ -329,6 +348,34 @@ for (
       await limited.body?.cancel()
       // Another address is not held back by the first one's limit.
       const other = await rate('192.0.2.11', 0)
+      expect(other.status).toBe(200)
+      await other.body?.cancel()
+    } finally {
+      s.close()
+    }
+  })
+
+  Deno.test(`ratings from one IPv6 /64 share one limit (${adapter})`, async () => {
+    const { management } = platform()
+    const s = build(management)
+    try {
+      const rate = (address: string, index: number) =>
+        s.as(
+          'viewer',
+          `/api/t/${s.slug}/feedback`,
+          post({ learningId: `learning-v6-${String(index).padStart(4, '0')}`, good: true }),
+          address,
+        )
+      // A new address in the same /64 for every rating.
+      for (let index = 0; index < 30; index++) {
+        const response = await rate(`2001:db8:1:2::${(index + 1).toString(16)}`, index)
+        expect(response.status).toBe(200)
+        await response.body?.cancel()
+      }
+      const limited = await rate('2001:db8:1:2::ff', 30)
+      expect(limited.status).toBe(429)
+      await limited.body?.cancel()
+      const other = await rate('2001:db8:1:3::1', 31)
       expect(other.status).toBe(200)
       await other.body?.cancel()
     } finally {
@@ -351,13 +398,12 @@ for (
       expect(genuine.status).toBe(200)
       // More made-up ratings than the portal keeps, from enough addresses to pass the limit.
       for (let index = 0; index < ANSWER_FEEDBACK_KEEP + 10; index++) {
-        const response = await s.as('viewer', `/api/t/${s.slug}/feedback`, {
-          ...post({ learningId: `forged-${String(index).padStart(6, '0')}`, good: true }),
-          headers: {
-            'content-type': 'application/json',
-            'x-forwarded-for': `198.51.100.${index % 250}`,
-          },
-        })
+        const response = await s.as(
+          'viewer',
+          `/api/t/${s.slug}/feedback`,
+          post({ learningId: `forged-${String(index).padStart(6, '0')}`, good: true }),
+          `198.51.100.${index % 250}`,
+        )
         expect(response.status).toBe(200)
         await response.body?.cancel()
       }
@@ -560,8 +606,8 @@ Deno.test('a privileged rating passes the Durable Object audit boundary as a dec
       configuredTenantId: f.tenantId,
       audience: f.audience,
       breakGlass: f.rbac.breakGlassService({
-        environment: 'development',
         passcode: 'fixture-passcode',
+        explicitFlag: 'true',
       }),
       requestContext: () => ({
         requestId: crypto.randomUUID(),

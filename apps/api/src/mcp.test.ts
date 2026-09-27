@@ -172,7 +172,10 @@ function harness(
   const audit = overrides.audit ?? rbac.audit
   const owned = localOwnedStores(dataDir, database, audit)
   const keys = owned.mcpKeys
-  const tenants = new TenantStore({ TENANTS_PATH: `${dataDir}/tenants.json` })
+  const tenants = new TenantStore({
+    TENANTS_PATH: `${dataDir}/tenants.json`,
+    SHOWCASE_PORTALS: 'marine,grains',
+  })
   const writer = { ...sessionFor('portal-admin', 'marine', Date.now()), oid: 'admin-user-id' }
   const service = rbac.assignmentService('tenant-1', 'corpuskit')
   service.observeSession(writer)
@@ -196,7 +199,7 @@ function harness(
       audit,
       configuredTenantId: 'tenant-1',
       audience: 'corpuskit',
-      breakGlass: rbac.breakGlassService({ environment: 'development', passcode: 'fixture' }),
+      breakGlass: rbac.breakGlassService({ passcode: 'fixture', explicitFlag: 'true' }),
       provider: new McpStubProvider(),
       tenants,
       mcpKeys: keys,
@@ -207,6 +210,8 @@ function harness(
         return {
           requestId: crypto.randomUUID(),
           session,
+          // The runtime's own view of the peer, which only this test harness sets.
+          clientIp: request.headers.get('x-test-peer') ?? undefined,
           coarseAdminEligible: false,
           effectiveRoles: {
             portalRoles: id === writer.oid ? [{ slug: 'marine', role: 'portal-admin' }] : [],
@@ -614,18 +619,23 @@ describe('Streamable HTTP MCP endpoint', () => {
     expect(await limited.json()).toEqual({ error: 'rate_limited' })
     // A limited attempt never reaches verification, so it writes no audit row.
     expect(denials()).toBe(before)
+    const attempt = (headers: Record<string, string>) =>
+      test.app.request('/api/t/marine/mcp', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json, text/event-stream',
+          'content-type': 'application/json',
+          authorization: `Bearer ${bad}`,
+          ...headers,
+        },
+        body: JSON.stringify(body),
+      })
+    // Address headers the caller writes itself choose no new bucket.
+    for (const header of ['cf-connecting-ip', 'fly-client-ip', 'x-forwarded-for']) {
+      expect((await attempt({ [header]: '198.51.100.7' })).status).toBe(429)
+    }
     // The limit is keyed by caller address, so the limiter itself keeps counting new callers.
-    const other = await test.app.request('/api/t/marine/mcp', {
-      method: 'POST',
-      headers: {
-        accept: 'application/json, text/event-stream',
-        'content-type': 'application/json',
-        authorization: `Bearer ${bad}`,
-        'fly-client-ip': '198.51.100.7',
-      },
-      body: JSON.stringify(body),
-    })
-    expect(other.status).toBe(401)
+    expect((await attempt({ 'x-test-peer': '198.51.100.7' })).status).toBe(401)
   })
 })
 
@@ -1135,7 +1145,10 @@ Deno.test('real local MCP ingress strips forged and foreign-audience principal h
   }
   const { database, rbac } = openLocalRbac(env)
   try {
-    const tenants = new TenantStore({ TENANTS_PATH: `${directory}/tenants.json` })
+    const tenants = new TenantStore({
+      TENANTS_PATH: `${directory}/tenants.json`,
+      SHOWCASE_PORTALS: 'marine,grains',
+    })
     tenants.patch('marine', { accessMode: 'restricted' })
     const ingress = new LocalIngress({ env, rbac, tenants })
     let calls = 0
@@ -1213,7 +1226,7 @@ Deno.test('break-glass key creation still needs the verified creator and current
         configuredTenantId: f.tenantId,
         audience: f.audience,
         requestContext: () => context,
-        breakGlass: f.rbac.breakGlassService({ environment: 'development', passcode: 'fixture' }),
+        breakGlass: f.rbac.breakGlassService({ passcode: 'fixture', explicitFlag: 'true' }),
       })
       const response = await app.request('/api/t/a/mcp/keys', {
         method: 'POST',
@@ -1244,7 +1257,10 @@ Deno.test('real local key HTTP commits restore exact bytes on append and SQL COM
   }
   const { database, rbac } = openLocalRbac(env)
   try {
-    const tenants = new TenantStore({ TENANTS_PATH: `${directory}/tenants.json` })
+    const tenants = new TenantStore({
+      TENANTS_PATH: `${directory}/tenants.json`,
+      SHOWCASE_PORTALS: 'marine,grains',
+    })
     const ingress = new LocalIngress({ env, tenants, rbac })
     const writer = sessionFor('owner', 'marine', Date.now())
     let failure: 'append' | 'commit' | 'completion' | undefined
@@ -1531,6 +1547,35 @@ Deno.test('a migrated legacy key is a fixed viewer key on its portal until revok
   } finally {
     f.close()
   }
+})
+
+Deno.test('a keyless MCP answer takes its address share of the portal like a web ask', async () => {
+  const test = harness(60, { rateLimitAnonPortalAskPerMin: 30, rateLimitAnonAddressAskPerMin: 2 })
+  const answer = async (peer: string) => {
+    const response = await test.app.request('/api/t/marine/mcp', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-protocol-version': '2025-11-25',
+        'x-test-peer': peer,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'answer_question', arguments: { question: 'What is stock health?' } },
+      }),
+    })
+    expect(response.status).toBe(200)
+    return (await response.json()).result
+  }
+  expect((await answer('198.51.100.8')).isError).not.toBe(true)
+  expect((await answer('198.51.100.8')).isError).not.toBe(true)
+  const refused = await answer('198.51.100.8')
+  expect(refused.isError).toBe(true)
+  expect(refused.structuredContent).toMatchObject({ error: 'rate_limited' })
+  expect((await answer('198.51.100.9')).isError).not.toBe(true)
 })
 
 Deno.test('MCP answers count toward the daily ask limit while searches and read-only portals do not', async () => {

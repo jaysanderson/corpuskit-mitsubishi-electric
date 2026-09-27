@@ -807,7 +807,8 @@ async function principalRequest(
   })
 }
 async function realHarness(
-  extraEnv: Record<string, string> = {},
+  /** Settings to add; an undefined value removes the harness's own. */
+  extraEnv: Record<string, string | undefined> = {},
   legacyBindings?: unknown,
   databasePath = ':memory:',
 ) {
@@ -854,6 +855,8 @@ async function realHarness(
     ENTRA_TENANT_ID: 'entra-tenant-id',
     ENTRA_CLIENT_SECRET: 'fixture',
     ADMIN_PASSCODE: 'fixture',
+    // The harness is a showcase deployment, as corpuskit.org is.
+    SHOWCASE_PORTALS: 'marine,grains',
     ...extraEnv,
   })
   if (legacyBindings) {
@@ -1041,6 +1044,112 @@ Deno.test('Worker break-glass uses trusted peer lockout and production policy wi
     } finally {
       h.database.close()
     }
+  }
+})
+
+Deno.test('a Worker serves the showcase portals only when SHOWCASE_PORTALS names them', async () => {
+  const warn = console.warn
+  console.warn = () => {}
+  try {
+    const read = async (h: Awaited<ReturnType<typeof realHarness>>, path: string) => {
+      const response = await worker.fetch(new Request(`https://corpuskit.test${path}`), h.env)
+      return { status: response.status, text: await response.text() }
+    }
+    const slugs = (text: string) => (JSON.parse(text) as { slug: string }[]).map((t) => t.slug)
+    const off = await realHarness({ SHOWCASE_PORTALS: undefined })
+    try {
+      const stores = (off.object as unknown as { stores: DurableStores }).stores
+      // No portal at all: an empty list, not a refusal.
+      expect(await read(off, '/api/tenants')).toEqual({ status: 200, text: '[]' })
+      const acme = stores.tenants.add({ name: 'Acme Research' })
+      // A stray record under a showcase slug is not served either.
+      const raw = off.state.get<{ custom: Record<string, unknown> }>('tenants', { custom: {} })
+      raw.custom.marine = { ...acme, slug: 'marine' }
+      off.state.put('tenants', raw)
+      expect(slugs((await read(off, '/api/tenants')).text)).toEqual(['acme-research'])
+      for (const path of ['/api/t/%s/config', '/api/t/%s/resources']) {
+        expect(await read(off, path.replace('%s', 'marine')))
+          .toEqual(await read(off, path.replace('%s', 'no-such-portal')))
+      }
+      // A showcase slug is never handed to a new portal.
+      expect(stores.tenants.add({ name: 'Grains' }).slug).toBe('grains-2')
+    } finally {
+      off.database.close()
+    }
+    const on = await realHarness()
+    try {
+      expect(slugs((await read(on, '/api/tenants')).text).sort()).toEqual(['grains', 'marine'])
+      expect((await read(on, '/api/t/marine/config')).status).toBe(200)
+    } finally {
+      on.database.close()
+    }
+  } finally {
+    console.warn = warn
+  }
+})
+
+Deno.test('Worker break-glass is on only for ADMIN_BREAK_GLASS=true, whatever ENVIRONMENT says', async () => {
+  const warn = console.warn
+  const warnings: string[] = []
+  console.warn = (message: string) => void warnings.push(String(message))
+  try {
+    for (const environment of [undefined, 'development', 'demo', 'production']) {
+      for (const flag of [undefined, 'false', 'true']) {
+        // The harness configures ADMIN_PASSCODE=fixture, as the demo deployment has a passcode.
+        const h = await realHarness({ ENVIRONMENT: environment, ADMIN_BREAK_GLASS: flag })
+        try {
+          const on = flag === 'true'
+          const label = `ENVIRONMENT=${environment} ADMIN_BREAK_GLASS=${flag}`
+          const me = await worker.fetch(new Request('https://corpuskit.test/auth/me'), h.env)
+          expect((await me.json()).breakGlassEnabled, label).toBe(on)
+          const admin = await worker.fetch(
+            new Request('https://corpuskit.test/api/admin/overview', {
+              headers: { 'x-admin-passcode': 'fixture', 'cf-connecting-ip': '192.0.2.80' },
+            }),
+            h.env,
+          )
+          expect(admin.status, label).toBe(on ? 200 : 403)
+          await admin.body?.cancel()
+        } finally {
+          h.database.close()
+        }
+      }
+    }
+    expect(warnings.some((w) => w.includes('ADMIN_BREAK_GLASS is not true'))).toBe(true)
+    expect(warnings.join('\n')).not.toContain('fixture')
+  } finally {
+    console.warn = warn
+  }
+})
+
+Deno.test('Worker rate limits key on cf-connecting-ip, never on headers the caller writes', async () => {
+  const h = await realHarness({ RATE_LIMIT_ASK_PER_MIN: '2', RATE_LIMIT_ASK_PER_MIN_IP: '3' })
+  try {
+    const ask = (peer: string, headers: Record<string, string> = {}) =>
+      worker.fetch(
+        new Request('https://corpuskit.test/api/t/marine/ask', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'cf-connecting-ip': peer, ...headers },
+          // Refused as invalid after the limiter has counted it, so no answer is generated.
+          body: '{}',
+        }),
+        h.env,
+      )
+    const spoofed = () => ({
+      'fly-client-ip': `203.0.113.${Math.floor(Math.random() * 250)}`,
+      'x-forwarded-for': `198.51.100.${Math.floor(Math.random() * 250)}`,
+      'x-rp-client': `browser-${crypto.randomUUID().slice(0, 12)}`,
+    })
+    expect((await ask('192.0.2.70', spoofed())).status).toBe(400)
+    expect((await ask('192.0.2.70', spoofed())).status).toBe(400)
+    expect((await ask('192.0.2.70', spoofed())).status).toBe(400)
+    const limited = await ask('192.0.2.70', spoofed())
+    expect(limited.status).toBe(429)
+    expect(await limited.json()).toEqual({ error: 'rate_limited' })
+    // Another address Cloudflare reports is another caller.
+    expect((await ask('192.0.2.71', spoofed())).status).toBe(400)
+  } finally {
+    h.database.close()
   }
 })
 

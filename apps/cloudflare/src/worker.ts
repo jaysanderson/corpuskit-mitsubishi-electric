@@ -45,7 +45,10 @@ import {
 } from '../../api/src/operator.ts'
 import { appendAudit, createAuditEvent } from '../../api/src/audit.ts'
 import { operatorDeleteAfterDays, operatorDeleteWarning } from '../../api/src/portal-erasure.ts'
-import type { BreakGlassService } from '../../api/src/break-glass.ts'
+import {
+  breakGlassConfigurationWarning,
+  type BreakGlassService,
+} from '../../api/src/break-glass.ts'
 import { runSystemMaintenance } from '../../api/src/scheduler.ts'
 import { linkProvisionalBytes } from '../../api/src/lifecycle-management.ts'
 import { AragProvider } from '@research-portal/retrieval'
@@ -59,6 +62,7 @@ import {
 } from './auth.ts'
 import { DurableState, type DurableStores, durableStores, stringEnv } from './state.ts'
 import { tenantAliasLocation } from '../../api/src/tenant-aliases.ts'
+import { showcasePortalsWarning } from '../../api/src/tenants.ts'
 import {
   aliasCacheSeconds,
   aliasHostRoute,
@@ -76,7 +80,7 @@ import {
   transportSecurityFor,
   unknownHostsMode,
 } from '../../api/src/portal-aliases.ts'
-import { SlidingWindowLimiter } from '../../api/src/rate-limit.ts'
+import { addressKey, SlidingWindowLimiter } from '../../api/src/rate-limit.ts'
 import { documentPath, probePath } from '../../api/src/public-paths.ts'
 import {
   createCloudflareDomainProvisioner,
@@ -143,13 +147,16 @@ export class PortalDurableObject extends DurableObject<Env> {
     if (hostWarning) console.warn(hostWarning)
     const deleteWarning = operatorDeleteWarning(bindings)
     if (deleteWarning) console.warn(deleteWarning)
+    const showcaseWarning = showcasePortalsWarning(bindings)
+    if (showcaseWarning) console.warn(showcaseWarning)
     this.stores = durableStores(state, bindings)
     this.externalFailures = new ExternalFailureAudit(this.stores.audit)
     this.breakGlass = this.stores.rbac.breakGlassService({
       passcode: bindings.ADMIN_PASSCODE,
-      environment: bindings.ENVIRONMENT,
       explicitFlag: bindings.ADMIN_BREAK_GLASS,
     })
+    const breakGlassWarning = breakGlassConfigurationWarning(bindings)
+    if (breakGlassWarning) console.warn(breakGlassWarning)
     if (bindings.ENTRA_TENANT_ID) {
       this.stores.rbac.assignmentService(bindings.ENTRA_TENANT_ID, bindings.WORKER_NAME)
         .bootstrapAdminEmails(bindings.ENTRA_ADMIN_EMAILS ?? '')
@@ -176,6 +183,9 @@ export class PortalDurableObject extends DurableObject<Env> {
       resolveBinding: (slug) => this.stores.bindings.get(slug),
       augmentationModel: bindings.ARAG_DA_AGENT_MODEL,
     })
+    // Rate limits key on the `cf-connecting-ip` the Worker passes in the trusted context, never
+    // on a forwarding header, so `TRUST_PROXY_HOPS` has no meaning here.
+    const askPerMin = numberBinding(bindings.RATE_LIMIT_ASK_PER_MIN, 20)
     this.app = buildApp({
       rbac: this.stores.rbac,
       configuredTenantId: bindings.ENTRA_TENANT_ID ||
@@ -214,7 +224,13 @@ export class PortalDurableObject extends DurableObject<Env> {
       invalidate: (slug) => this.provider.invalidate(slug),
       webAvailable: true,
       buildSha: env.CF_VERSION_METADATA?.id ?? 'cloudflare',
-      rateLimitAskPerMin: numberBinding(bindings.RATE_LIMIT_ASK_PER_MIN, 20),
+      rateLimitAskPerMin: askPerMin,
+      rateLimitAskPerMinPerIp: numberBinding(bindings.RATE_LIMIT_ASK_PER_MIN_IP, askPerMin * 5),
+      rateLimitAnonPortalAskPerMin: numberBinding(bindings.RATE_LIMIT_ANON_PORTAL_ASK_PER_MIN, 30),
+      rateLimitAnonAddressAskPerMin: numberBinding(
+        bindings.RATE_LIMIT_ANON_ADDRESS_ASK_PER_MIN,
+        10,
+      ),
       rateLimitEstatePerMin: numberBinding(bindings.RATE_LIMIT_ESTATE_PER_MIN, 6),
     })
   }
@@ -480,7 +496,7 @@ export class PortalDurableObject extends DurableObject<Env> {
     request: Request,
     clientIp?: string,
   ): Promise<{ limited: false } | { limited: true; retryAfterSec: number }> {
-    const { allowed, retryAfterSec } = this.operatorFailures.check(clientIp ?? 'unknown')
+    const { allowed, retryAfterSec } = this.operatorFailures.check(addressKey(clientIp))
     if (!allowed) return { limited: true, retryAfterSec }
     await this.auditDenial(request, 401)
     return { limited: false }
@@ -492,7 +508,7 @@ export class PortalDurableObject extends DurableObject<Env> {
    * client address, so a looping replay cannot grow the audit log without bound.
    */
   async auditSessionHostMismatch(request: Request, oid: string, clientIp?: string): Promise<void> {
-    if (!this.hostMismatches.check(clientIp ?? 'unknown').allowed) return
+    if (!this.hostMismatches.check(addressKey(clientIp)).allowed) return
     appendAudit(
       this.stores.audit,
       createAuditEvent({
@@ -512,7 +528,7 @@ export class PortalDurableObject extends DurableObject<Env> {
    * as `host_conflict` at most a few times a minute per client address.
    */
   async auditHostConflict(request: Request, clientIp?: string): Promise<void> {
-    if (!this.hostConflicts.check(clientIp ?? 'unknown').allowed) return
+    if (!this.hostConflicts.check(addressKey(clientIp)).allowed) return
     appendAudit(
       this.stores.audit,
       createAuditEvent({
@@ -536,7 +552,7 @@ export class PortalDurableObject extends DurableObject<Env> {
    * the rest are counted onto the next record (see `ExternalFailureAudit`).
    */
   async auditExternalFailure(reason: ExternalLoginFailure, clientIp?: string): Promise<void> {
-    this.externalFailures.record(reason, clientIp ?? 'unknown')
+    this.externalFailures.record(reason, addressKey(clientIp))
   }
 
   async maintenance(): Promise<void> {
