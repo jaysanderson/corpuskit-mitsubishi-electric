@@ -3,6 +3,7 @@ import {
   isSafeLifecycleNote,
   PERMISSIONS,
   PORTAL_ROLES,
+  ResourceTypeSchema,
   ROLES,
   type Scope,
   ScopeSchema,
@@ -245,6 +246,11 @@ const fields = {
   suggestionId: id,
   suggestionKind: member(['labelset', 'label-addition', 'entity-type', 'graph-example']),
   method: member(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']),
+  // What kind of document a delete removed, and whether it was a draft; never its title.
+  resourceKind: member(ResourceTypeSchema.options),
+  draft: flag,
+  // The knowledge box no longer held the document: only what the portal kept for it was cleared.
+  cleanupOnly: flag,
   suspendedDays: count,
   operatorDeleteAfterDays: count,
   eraseRequested: flag,
@@ -346,6 +352,15 @@ const actionFields = {
     'suggestionId',
     'suggestionKind',
   ],
+  'resource.delete': [
+    'code',
+    'permission',
+    'resourceKind',
+    'draft',
+    'cleanupOnly',
+    'sessionOid',
+    'sessionTenantId',
+  ],
   'resource.questions.generate': ['code', 'permission', 'sessionOid', 'sessionTenantId'],
   'resource.questions.cache': ['code', 'permission', 'sessionOid', 'sessionTenantId'],
   'tenant.appearance.update': [
@@ -408,6 +423,13 @@ const actionFields = {
   'maintenance.questions.run': ['code', 'permission'],
 } as const satisfies Record<string, readonly Field[]>
 export type AuditAction = keyof typeof actionFields
+/**
+ * Every action this server can record: `createAuditEvent` refuses any other name. The web audit
+ * viewer's catalogue is checked against this list, so a new action cannot be left out of it.
+ */
+export const AUDIT_ACTION_NAMES: readonly AuditAction[] = Object.freeze(
+  Object.keys(actionFields) as AuditAction[],
+)
 
 /** Only own, named scalar fields are inspected. Unknown fields are discarded without traversal. */
 export function redactAuditDetail(

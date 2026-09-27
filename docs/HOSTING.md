@@ -313,7 +313,7 @@ shaped like a credential (a bearer or operator token, a key, a JWT, a sealed bin
 the portal's content or configuration is refused with 423 `portal_read_only`: uploads, links
 and text, sources and syncs, reingest, purges, label sets, the knowledge graph, agents,
 enrichment and suggested-question runs, prompts, search configurations, extraction rules,
-appearance, branding and the knowledge-box binding. A copy into the portal (`POST
+appearance, branding, the knowledge-box binding and deleting a document. A copy into the portal (`POST
 /api/admin/migrate`) is refused too; a copy out of it is allowed. Scheduled source syncs,
 enrichment runs and suggested-question runs stop, and a run already under way stops before its
 next model call (see [Runs in progress](#runs-in-progress)). Cached suggested questions are
@@ -463,15 +463,21 @@ byte limit is set are judged at their provisional bytes until they are measured.
 A link still unprocessed, or unreadable, an hour after it was added is stuck: it stops counting
 towards the 20, but it keeps its provisional bytes until it is measured, which happens as soon
 as the platform settles it. An add that would fit but for stuck links is refused with 413
-`{ "error": "links_stuck" }`: waiting will not make room, and the app asks the curator to have
-the hosting operator check the link or raise the storage limit. CorpusKit has no route to
-remove a resource. To release a stuck link, the hosting operator deletes its resource on the
-platform: an hour of 404s later it holds nothing (see above). Otherwise its bytes can only be
-worked around: by raising `maxBytes`, by clearing it (without `maxBytes` provisional bytes are
-held against nothing), or by connecting a different knowledge box, which starts a fresh ledger. A
+`{ "error": "links_stuck" }`: waiting will not make room. The app tells the curator to delete the
+stuck link from Recent additions, which lists every stuck link, however old, marked Stuck.
+[Deleting it](#deleting-a-document) frees its provisional bytes at once. The operator paths
+remain as alternatives: the hosting operator can delete its resource on the platform, and an
+hour of 404s later it holds nothing (see above), or can raise `maxBytes`, clear it (without
+`maxBytes` provisional bytes are held against nothing), or connect a different knowledge box,
+which starts a fresh ledger. A
 ledger written by an earlier build in a form this build does not recognise is read, never
 refused: a link recorded in an unknown form is taken as not yet measured and holds the
-deployment's `LINK_PROVISIONAL_BYTES` until it is.
+deployment's `LINK_PROVISIONAL_BYTES` until it is. Delete records (see
+[Deleting a document](#deleting-a-document)) are kept beside the ledger, not in it, and one in an
+unknown form is left out, so its document stays counted. The ledger itself keeps the shape the
+build before document delete reads, so that build can be rolled back to at any time: it ignores
+the delete records. A delete waiting to be settled stays counted while that build runs, and is
+settled as before once this build is back.
 
 Resource and byte limits apply to every add: uploads, links, pasted text, source syncs, content
 copies, reingest and the built-in help pages. They are checked when the write happens,
@@ -548,6 +554,75 @@ GET /api/admin/t/:slug/usage
   Reads are not recorded, because CorpusKit never writes state on a read, so browsing and
   searching alone do not move it. It is recorded at most once a minute.
 
+### Deleting a document
+
+A curator, or anyone holding `content.write` on the portal, deletes one document, published or a
+draft, with `DELETE /api/admin/t/:slug/resources/:id`. In the web app the delete is offered on
+each row of Recent additions (including links still processing, stuck or in error), on each row
+of Corpus health, and on the document's own page, always behind a confirmation that names the
+document. Viewers, analysts and anonymous visitors never see it. It is permanent.
+
+The route reads the document once, drafts included, in the portal's own knowledge box. An id the
+box does not hold, including one from another portal's box or one already deleted, answers 404
+`not_found`; no other box is read, unless the portal still keeps something for that id (see
+below). A read that fails answers 502 `upstream_unavailable`. Then, in the same step as the
+portal's adds, so that no add reads the resource count in between:
+
+1. If the request has already ended (the client went away, or the request ran out of time while
+   the delete waited its turn), nothing is sent and nothing changes.
+2. The ledger records that the delete is being sent, and the knowledge box is asked to delete the
+   document. The request's end cancels that call where the platform allows. If the box refuses,
+   the route answers 502 `delete_failed` and nothing changes. If it does not answer within 30
+   seconds, or the request ends while it is in flight, the delete may still land; the ledger's
+   record of it stays, and later reads settle it (see below).
+3. The capacity ledger releases the document's size, or the provisional bytes of a link still
+   waiting to be measured, and counts the removal towards `maxResources` until the box's own
+   count shows it. A measurement of the link read meanwhile is not recorded.
+4. Every enrichment kept for the document is removed, including its cached suggested questions,
+   and one written while the box was deleting it.
+5. The cached catalogue, search results, page summaries, entity groups and graph, and the
+   portal's memoised facet counts, are dropped, so the Library, search and answers stop showing it
+   at once.
+
+A delete that overtakes the add that created the document (the box has created it but the
+request that added it has not finished) goes ahead. When that add settles, it finds the delete
+and records nothing, so no space stays held for a document that is gone.
+
+A delete whose release was never recorded is settled from reads of the box. An add that the
+storage limit would refuse, and a usage report, read the box for each such document, drafts
+included. Once those reads have answered nothing but 404 for an hour, timed by when they were
+read, the document's space is released, with no removal counted twice. One the box still holds an
+hour after its delete was sent was not deleted, and stays counted. Deleting the same id again
+settles it at once.
+
+Each delete is audited as `resource.delete` at portal scope, with the resource id as its target
+and `resourceKind` and `draft` in its detail; never its title. If the box deleted the document
+but step 3 or 4 failed, the route answers 500 `cleanup_incomplete` on either storage adapter, and
+the record's outcome is `uncertain`. Deleting the same id again finishes the clean-up: the delete
+is sent again, since one read answering 404 is no proof the box has let the document go, and a
+document already gone answers as one; then only what the portal still keeps under the id is
+cleared, without counting the removal twice, and the record says `cleanupOnly`. A delete of a
+read-only or suspended portal is refused like any other write.
+
+The purge of failed crawls (`POST /api/admin/t/:slug/purge-failed`) deletes in waves of five.
+Each wave takes the same step with the adds once, and its deletes are recorded and released as
+above. A purge starts no further wave once its request has ended or it has run for 75 seconds;
+its result counts what it left as `notAttempted`, for the next purge.
+
+Kept: what people saved for themselves. Investigation evidence and artefacts, research sessions
+and watches keep their rows. Evidence from a deleted document is shown as no longer in the
+Library, and a synthesis leaves it out. The ask log, the routing log, setup suggestions and
+knowledge-graph proposals hold no document ids and are unchanged; they are portal-wide.
+
+A page that a website source added is not added back by later syncs: each source remembers the
+addresses it has ingested, and a sync skips them. Three things bring one back: the source's
+memory keeps its most recent 5,000 addresses, so on a source that has ingested more, an older
+page still on the site can be ingested again; removing a source and adding it again starts its
+memory afresh; and adding the same link or file by hand adds it again. A built-in help page is
+recreated by the next help ingest.
+
+The MCP server has no delete tool, and keys never reach `/api/admin/*`.
+
 ### How enforcement works
 
 Enforcement is central, so a new route cannot bypass it by accident:
@@ -599,10 +674,12 @@ The two are independent:
 ### Storage
 
 On Cloudflare, lifecycle state lives in the `PortalDurableObject` SQLite `state` table under
-four keys per portal: `portal-lifecycle:<slug>` (status, limits, last activity),
+five keys per portal: `portal-lifecycle:<slug>` (status, limits, last activity),
 `portal-asks:<slug>` (ask counts in quarter-hour buckets, kept for 32 days),
-`portal-capacity:<slug>` (reservations and the byte ledger) and `portal-suspension:<slug>` (when
-the current suspension began). The suspension start is kept beside the lifecycle record rather
+`portal-capacity:<slug>` (reservations and the byte ledger), `portal-deletes:<slug>` (deletes
+whose release is not recorded yet, present only while there are some) and
+`portal-suspension:<slug>` (when the current suspension began). The delete records are cleared
+with the ledger whenever it starts afresh, and a portal's removal and erasure take them too. The suspension start is kept beside the lifecycle record rather
 than in it, so a release from before it was tracked still reads the lifecycle. Such a release
 ignores the suspension record and does not update it, so once the lifecycle has been replaced
 without it the record no longer applies. A suspended portal with no applicable record, including
@@ -1317,7 +1394,7 @@ a portal that has already been deleted, by the owner or by the operator route.
 | `configuration` | An override or disabled flag left in the portal registry | `tenants` row | `TENANTS_PATH` |
 | `aliases` | Host alias records | `tenants` row | `TENANTS_PATH` |
 | `bindings` | The knowledge box endpoint and sealed service account token | `bindings` row | `BINDINGS_PATH` |
-| `lifecycle` | Status, limits, ask counts, capacity ledger and suspension start | `portal-*:<slug>` rows | `DATA_DIR/lifecycle/` |
+| `lifecycle` | Status, limits, ask counts, capacity ledger, pending delete records and suspension start | `portal-*:<slug>` rows | `DATA_DIR/lifecycle/` |
 | `sessions` | Every member's and visitor's saved research sessions, including pre-owner-scope records | `research-v2:…:sessions:` and `session:<slug>:` rows | `DATA_DIR/research-v2/`, `DATA_DIR/sessions/<slug>/` |
 | `investigations` | Investigations with their evidence, notes and artefacts | `research-v2:…:investigations:` and `investigation:<slug>:` rows | `DATA_DIR/research-v2/`, `DATA_DIR/investigations/<slug>/` |
 | `watches` | Saved searches | `research-v2:…:watches` and `watches:<slug>` rows | `DATA_DIR/research-v2/`, `DATA_DIR/watches/<slug>.json` |

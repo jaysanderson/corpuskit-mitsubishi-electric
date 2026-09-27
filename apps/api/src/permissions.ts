@@ -142,7 +142,19 @@ export const DECLARATIONS: readonly Declaration[] = Object.freeze([
     ['lifecycle', ['remove'], 'portal.delete', 'platform'],
     ['lifecycle', ['consumeAsk', 'refundAsk'], 'portal.ask', 'portal'],
     ['lifecycle', ['touch'], 'portal.read', 'portal'],
-    ['lifecycle', ['reserveAdd', 'settleAdd', 'forgetResource'], 'content.write', 'portal'],
+    [
+      'lifecycle',
+      [
+        'reserveAdd',
+        'settleAdd',
+        'beginDelete',
+        'abandonDelete',
+        'forgetResource',
+        'dropResource',
+      ],
+      'content.write',
+      'portal',
+    ],
     ['lifecycle', ['resetCapacity'], 'bindings.write', 'portal'],
     ['bindings', ['set', 'remove'], 'bindings.write', 'portal'],
     ['tenants', ['seed', 'add'], 'portal.create', 'platform'],
@@ -175,6 +187,8 @@ export const DECLARATIONS: readonly Declaration[] = Object.freeze([
     ],
     ['suggestions', ['replacePending', 'setStatus'], 'behaviour.write', 'portal'],
     ['enrichments', ['put', 'importRecords', 'migrateLegacy'], 'enrichments.write', 'portal'],
+    // Deleting a document removes the enrichments kept for it; the delete needs only content.write.
+    ['enrichments', ['forgetResource'], 'content.write', 'portal'],
     ['kgProposals', ['set'], 'graph.write', 'portal'],
     ['branding', ['put'], 'appearance.write', 'portal'],
     ['mcpKeys', ['add', 'revoke'], 'keys.manage', 'portal'],
@@ -428,6 +442,11 @@ export const DECLARATIONS: readonly Declaration[] = Object.freeze([
   entry('http', 'GET', '/api/admin/t/:slug/insights', 'content.write', 'portal'),
   entry('http', 'POST', '/api/admin/t/:slug/resources/:id/hidden', 'content.write', 'portal', {
     subActions: [HIDDEN_RESOURCES_ENABLE],
+  }),
+  // Deleting a document, published or a draft: the same permission as purge-failed and reingest,
+  // which already delete resources.
+  entry('http', 'DELETE', '/api/admin/t/:slug/resources/:id', 'content.write', 'portal', {
+    subActions: [{ action: 'resource.delete', permission: 'content.write', scope: 'portal' }],
   }),
   entry('http', 'GET', '/api/admin/t/:slug/sources', 'content.write', 'portal'),
   entry('http', 'POST', '/api/admin/t/:slug/sources', 'content.write', 'portal'),
