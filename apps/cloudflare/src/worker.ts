@@ -11,7 +11,7 @@ import {
   externalLoginPresentation,
   ExternalLoginReplayStore,
 } from '../../api/src/external-login.ts'
-import { docPageById } from '../../../packages/core/src/docs.ts'
+import { isPublicDocPageId } from '../../../packages/core/src/docs.ts'
 import {
   getPlatformDomain,
   isPlatformHostname,
@@ -51,6 +51,7 @@ import {
 } from '../../api/src/break-glass.ts'
 import { runSystemMaintenance } from '../../api/src/scheduler.ts'
 import { linkProvisionalBytes } from '../../api/src/lifecycle-management.ts'
+import { embeddedWebBuild } from './build-stamp.ts'
 import { AragProvider } from '@research-portal/retrieval'
 import {
   type AuthConfig,
@@ -223,7 +224,9 @@ export class PortalDurableObject extends DurableObject<Env> {
       requestContext: (request) => this.contexts.get(request),
       invalidate: (slug) => this.provider.invalidate(slug),
       webAvailable: true,
+      // Release verification matches `version` to the Cloudflare version id, so it stays that.
       buildSha: env.CF_VERSION_METADATA?.id ?? 'cloudflare',
+      webBuild: embeddedWebBuild(),
       rateLimitAskPerMin: askPerMin,
       rateLimitAskPerMinPerIp: numberBinding(bindings.RATE_LIMIT_ASK_PER_MIN_IP, askPerMin * 5),
       rateLimitAnonPortalAskPerMin: numberBinding(bindings.RATE_LIMIT_ANON_PORTAL_ASK_PER_MIN, 30),
@@ -867,7 +870,7 @@ export function marketingHomeRequest(request: Request, domain: string): Request 
     const id = /^\/docs\/([a-z0-9-]+)(?:\.html)?\/?$/.exec(url.pathname)?.[1]
     // Unknown paths deliberately serve the overview. Ask Assets for its
     // canonical directory/extensionless URL to avoid pretty-URL redirects.
-    url.pathname = id && docPageById(id) ? `/docs/${id}` : '/docs/'
+    url.pathname = id && isPublicDocPageId(id) ? `/docs/${id}` : '/docs/'
   } else if (url.pathname === '/') {
     // Ask Assets for its extensionless route. Requesting `home.html` directly
     // invokes pretty-URL handling and would leak a `/home` redirect to visitors.
