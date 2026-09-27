@@ -17,6 +17,7 @@ import {
   isPlatformHostname,
 } from '../../../packages/core/src/platform-domain.ts'
 import { platformShellResponse } from '../../api/src/platform-shell.ts'
+import { robotsTag, robotsTxt, sitemapXml } from '../../api/src/search-files.ts'
 import { bindingKeyState } from '../../api/src/binding-crypto.ts'
 import { initialiseDemo } from './demo.ts'
 import { initialiseAcmdDemo } from './acmd-demo.ts'
@@ -743,6 +744,24 @@ async function pageRoute(
     return plain('Method not allowed', 405, { allow: 'GET, HEAD' })
   }
 
+  // robots.txt on every host, naming the sitemap on the apex; the sitemap lists the apex's pages.
+  if (url.pathname === '/robots.txt') {
+    return secureAssetResponse(
+      new Response(robotsTxt(platformDomain, url.hostname, stringEnv(env).PORTAL_INDEXING), {
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      }),
+    )
+  }
+  if (url.pathname === '/sitemap.xml') {
+    return url.hostname === platformDomain
+      ? secureAssetResponse(
+        new Response(sitemapXml(platformDomain), {
+          headers: { 'content-type': 'application/xml; charset=utf-8' },
+        }),
+      )
+      : plain('Not found', 404)
+  }
+
   // The internet's routine search for secrets and server-side scripts is
   // refused before any asset lookup. The router's own paths are exempt.
   if (!documentPath(url.pathname) && probePath(url.pathname)) {
@@ -753,13 +772,18 @@ async function pageRoute(
     await env.ASSETS.fetch(marketingHomeRequest(request, platformDomain)),
     platformDomain,
     hostPortal,
+    url.hostname,
   )
   // Assets answers every unknown path with the app shell and a 200. Keep
   // the shell, so a person still sees the app's own not-found page, but say
   // 404: a scanner learns nothing and a crawler does not index the typo.
   const unknownShell = asset.status === 200 && !documentPath(url.pathname) &&
     (asset.headers.get('content-type') ?? '').includes('text/html')
-  return secureAssetResponse(asset, unknownShell ? 404 : asset.status)
+  const response = secureAssetResponse(asset, unknownShell ? 404 : asset.status)
+  // PORTAL_INDEXING=deny keeps a portal's pages out of search; the apex's own pages stay in.
+  const tag = robotsTag(platformDomain, url.hostname, url.pathname, stringEnv(env).PORTAL_INDEXING)
+  if (tag) response.headers.set('x-robots-tag', tag)
+  return response
 }
 
 /**
