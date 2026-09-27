@@ -285,8 +285,12 @@ import {
 } from './extraction.ts'
 import type { DocsHealth } from './docs-health.ts'
 import {
+  answerFeedback,
   type EnrichmentCollisionPolicy,
   type EnrichmentRecords,
+  FeedbackStore,
+  type FeedbackStoreApi,
+  feedbackSummary,
   InsightsStore,
   type InsightsStoreApi,
   InvestigationStore,
@@ -592,7 +596,8 @@ const linkBodySchema = z.object({
   hidden: z.boolean().optional(),
 })
 const feedbackBodySchema = z.object({
-  learningId: z.string().min(8),
+  // The platform's ids are 32 hex characters; anything outside this bound is not one.
+  learningId: z.string().min(8).max(128).regex(/^[A-Za-z0-9_-]+$/),
   good: z.boolean(),
   text: z.string().max(2000).optional(),
 }).strict()
@@ -976,6 +981,8 @@ export interface BuildAppOptions {
   bindings?: BindingStoreApi
   platformDomain?: string
   insights?: InsightsStoreApi
+  /** Readers' ratings of answers, kept for the portal's curators; the on-disk store when omitted. */
+  feedback?: FeedbackStoreApi
   sessions?: SessionsStoreApi
   /** Source registry; shared with startScheduler in server.ts so a scheduled sync and a
    *  concurrent HTTP write don't clobber each other. A fresh store when omitted (tests). */
@@ -1032,6 +1039,8 @@ export interface BuildAppOptions {
   rateLimitAskPerMin?: number
   /** Wider per-address cap behind the per-client limit (default 5x ask limit). */
   rateLimitAskPerMinPerIp?: number
+  /** Answer ratings a minute per address and portal; 0 turns the limit off. */
+  rateLimitFeedbackPerMin?: number
   /** Requests/min/IP for POST /api/ask-estate, which fans one request across every tenant.
    *  Defaults to env RATE_LIMIT_ESTATE_PER_MIN, or 6. 0 disables. */
   rateLimitEstatePerMin?: number
@@ -1093,6 +1102,7 @@ export function buildApp(opts: BuildAppOptions): Hono {
   const platformDomain = getPlatformDomain(opts.platformDomain ?? process.env.PLATFORM_DOMAIN)
   const tenants = opts.tenants ?? new TenantStore({ PLATFORM_DOMAIN: platformDomain })
   const insights = opts.insights ?? new InsightsStore()
+  const feedback = opts.feedback ?? new FeedbackStore()
   const routing = opts.routing ?? new RoutingLog()
   const sessions = opts.sessions ?? new SessionsStore()
   const watches = opts.watches ?? new WatchStore()
@@ -1762,6 +1772,16 @@ export function buildApp(opts: BuildAppOptions): Hono {
     { limiter: expensiveIpLimiter, keyFn: clientIp },
   ]))
   const estateRateLimit = infrastructureHandler(rateLimit(estateLimiter, clientIp))
+  // A rating costs nothing to send and each portal keeps a bounded number, so an unthrottled
+  // caller could fill a portal's store with made-up ratings. A reader rates a few answers a
+  // minute: per address and portal, the address as the MCP limiter reads it.
+  const feedbackPerMin = opts.rateLimitFeedbackPerMin ??
+    Number(process.env.RATE_LIMIT_FEEDBACK_PER_MIN ?? 30)
+  const feedbackLimiter = new SlidingWindowLimiter({ limit: feedbackPerMin, windowMs: 60_000 })
+  const feedbackRateLimit = infrastructureHandler(rateLimit(
+    feedbackLimiter,
+    (c) => `${c.req.header('cf-connecting-ip') ?? clientIp(c)}|${c.req.param('slug') ?? ''}`,
+  ))
 
   // Baseline security headers on every response. Deliberately narrow for now:
   // frame-ancestors only, not a full CSP - the app legitimately loads
@@ -3432,12 +3452,28 @@ export function buildApp(opts: BuildAppOptions): Hono {
     }
   })
 
-  app.post(declaredRoute('POST', '/api/t/:slug/feedback'), async (c) => {
+  app.post(declaredRoute('POST', '/api/t/:slug/feedback'), feedbackRateLimit, async (c) => {
     const config = tenant(c.req.param('slug'))
     if (!config) return c.json({ error: 'unknown_tenant' }, 404)
     if (!opts.management) return c.json({ error: 'management_unavailable' }, 503)
     const parsed = feedbackBodySchema.safeParse(await c.req.json().catch(() => null))
     if (!parsed.success) return c.json({ error: 'invalid_request' }, 400)
+    // Kept for the portal's curators before it is forwarded, so a failed forward never loses
+    // it; a failed local save never stops the rating reaching the platform.
+    try {
+      // Past the portal's cap, ratings of answers its ask log does not hold go first.
+      feedback.record(
+        config.slug,
+        answerFeedback(parsed.data, Date.now()),
+        (learningIds) => new Set(Object.keys(insights.questions(config.slug, learningIds))),
+      )
+    } catch (err) {
+      console.warn(JSON.stringify({
+        message: 'answer feedback was not kept',
+        slug: config.slug,
+        error: err instanceof Error ? err.message : String(err),
+      }))
+    }
     try {
       await opts.management.feedback(config, parsed.data)
       return c.json({ ok: true })
@@ -4396,6 +4432,7 @@ export function buildApp(opts: BuildAppOptions): Hono {
     watches,
     sources,
     insights,
+    feedback,
     suggestions,
     enrichments,
     kgProposals,
@@ -5615,7 +5652,15 @@ export function buildApp(opts: BuildAppOptions): Hono {
   app.get(declaredRoute('GET', '/api/admin/t/:slug/insights'), (c) => {
     const config = tenant(c.req.param('slug'))
     if (!config) return c.json({ error: 'unknown_tenant' }, 404)
-    return c.json(insights.summary(config.slug))
+    return c.json({
+      ...insights.summary(config.slug),
+      // Readers' ratings, with the unhelpful answers joined to the questions they answered.
+      feedback: feedbackSummary(
+        feedback.ratings(config.slug),
+        (learningIds) => insights.questions(config.slug, learningIds),
+        (learningIds) => feedback.comments(config.slug, learningIds),
+      ),
+    })
   })
 
   app.post(declaredRoute('POST', '/api/admin/t/:slug/resources/:id/hidden'), async (c) => {
@@ -6021,8 +6066,15 @@ export function buildApp(opts: BuildAppOptions): Hono {
       // A provider failure is described in the portal's own words; the
       // upstream detail - host, box id, vendor name - stays in the server
       // log (review loop 8 D8-07).
+      // The answer's learning id, as the reader receives it: the ask log keeps it so a rating
+      // of this answer can be joined back to its question.
+      let learningId: string | undefined
       const send = (event: unknown) => {
         if (cancelled()) throw new DOMException('Request cancelled', 'AbortError')
+        const learning = event as { type?: unknown; id?: unknown } | null
+        if (learning?.type === 'learning' && typeof learning.id === 'string') {
+          learningId = learning.id
+        }
         return stream.writeSSE({ data: JSON.stringify(publicSseEvent(event, 'ask')) })
       }
       // A follow-up that asks for the earlier answers in another shape
@@ -7520,6 +7572,7 @@ export function buildApp(opts: BuildAppOptions): Hono {
           answerRelevance: record.answerRelevance,
           groundedness: record.groundedness,
           contextRelevance: record.contextRelevance,
+          ...(learningId ? { learningId } : {}),
         })
       } catch {
         // insights are best-effort - never fail the answer over them

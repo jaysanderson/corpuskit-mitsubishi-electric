@@ -277,6 +277,32 @@ export interface AskInsight {
   answerRelevance: number | null
   groundedness: number | null
   contextRelevance: number | null
+  /**
+   * The platform's id for the answer, which readers' feedback names, so a rating can be joined
+   * back to the question it answered. Absent on asks recorded before it was kept.
+   */
+  learningId?: string
+}
+
+/** The asks Insights lists: never with the answer ids feedback joins on. */
+function withoutLearningId({ learningId: _learningId, ...insight }: AskInsight): AskInsight {
+  return insight
+}
+
+/** The question each answer answered, keyed by the answer's learning id, from an ask log. */
+function questionsByLearningId(
+  asks: readonly AskInsight[],
+  learningIds: readonly string[],
+): Record<string, { question: string; ts: string }> {
+  const wanted = new Set(learningIds)
+  const found: Record<string, { question: string; ts: string }> = {}
+  if (wanted.size === 0) return found
+  for (const ask of asks) {
+    if (ask.learningId && wanted.has(ask.learningId)) {
+      found[ask.learningId] = { question: ask.question, ts: ask.ts }
+    }
+  }
+  return found
 }
 
 export interface InsightsSummary {
@@ -369,8 +395,274 @@ export class InsightsStore {
       avgAnswerRelevance: avg(answered.map((i) => i.answerRelevance)),
       topQuestions: byCount.slice(0, 10).map(([question, count]) => ({ question, count })),
       gaps,
-      recent: all.slice(-25).reverse(),
+      recent: all.slice(-25).reverse().map(withoutLearningId),
     }
+  }
+
+  /** The questions the named answers answered (see `AskInsight.learningId`). */
+  questions(
+    slug: string,
+    learningIds: readonly string[],
+  ): Record<string, { question: string; ts: string }> {
+    return learningIds.length === 0 ? {} : questionsByLearningId(this.readAll(slug), learningIds)
+  }
+}
+
+// --- Answer feedback ----------------------------------------------------------
+
+/**
+ * A reader's rating of one answer, kept for the portal's curators (Insights, "Answers marked
+ * unhelpful") as well as forwarded to the platform. One record per answer: a later rating of the
+ * same answer replaces the earlier one. The comment is personal data: it is bounded, ages out
+ * after `ANSWER_FEEDBACK_DAYS` and is erased with the portal.
+ */
+export interface AnswerFeedback {
+  ts: string
+  /** The platform's id for the answer; the ask log records it beside the question. */
+  learningId: string
+  good: boolean
+  /** What the reader said was wrong, at most `ANSWER_FEEDBACK_TEXT_MAX` characters. */
+  text?: string
+}
+
+/**
+ * The longest comment kept, in characters (code points). A longer one is shortened here, and
+ * forwarded to the platform whole.
+ */
+export const ANSWER_FEEDBACK_TEXT_MAX = 1_000
+/** Ratings kept per portal; the newest win. */
+export const ANSWER_FEEDBACK_KEEP = 500
+/** Days a rating is kept: the window Insights reports on. */
+export const ANSWER_FEEDBACK_DAYS = 90
+
+const DAY_MS = 24 * 3600 * 1000
+
+/**
+ * A learning id as the platform issues it (a 32-character hex id) and as the feedback route
+ * accepts it: 8 to 128 letters, digits, `_` or `-`. The bound keeps every stored rating small.
+ */
+export const LEARNING_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/
+
+/** Most unhelpful answers Insights lists, and so the most comments it reads. */
+export const FLAGGED_ANSWERS_SHOWN = 50
+
+/** The record kept for a rating received at `now`. */
+export function answerFeedback(
+  input: { learningId: string; good: boolean; text?: string },
+  now: number,
+): AnswerFeedback {
+  const text = input.text?.trim()
+  // Counted and cut by code point, so a character outside the basic plane is never split.
+  const characters = text ? Array.from(text) : []
+  return {
+    ts: new Date(now).toISOString(),
+    learningId: input.learningId,
+    good: input.good,
+    ...(text
+      ? {
+        text: characters.length > ANSWER_FEEDBACK_TEXT_MAX
+          ? `${characters.slice(0, ANSWER_FEEDBACK_TEXT_MAX - 1).join('')}…`
+          : text,
+      }
+      : {}),
+  }
+}
+
+/** A stored rating, or null for anything that is not one. */
+export function parseAnswerFeedback(value: unknown): AnswerFeedback | null {
+  if (!value || typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  if (
+    typeof record.ts !== 'string' || !Number.isFinite(Date.parse(record.ts)) ||
+    typeof record.learningId !== 'string' || !LEARNING_ID_PATTERN.test(record.learningId) ||
+    typeof record.good !== 'boolean' ||
+    (record.text !== undefined &&
+      (typeof record.text !== 'string' || record.text.length > ANSWER_FEEDBACK_TEXT_MAX * 2))
+  ) return null
+  return {
+    ts: record.ts,
+    learningId: record.learningId,
+    good: record.good,
+    ...(typeof record.text === 'string' ? { text: record.text } : {}),
+  }
+}
+
+/** Which of the named answers the portal's ask log holds. */
+export type MatchedAnswers = (learningIds: string[]) => ReadonlySet<string>
+
+/**
+ * The ratings to keep under a cap, newest first. Past the cap, a rating of an answer the ask log
+ * does not hold goes before any rating of one it does, so ratings of made-up answers cannot push
+ * genuine ones out. Unmatched ratings are still kept while there is room: the ask log can stop
+ * recording, and the ratings of answers given after that are genuine too.
+ */
+export function keptRatings<T extends { learningId: string; ts: string }>(
+  records: readonly T[],
+  keep: number,
+  matched?: MatchedAnswers,
+): T[] {
+  // Newest first, ties by answer id, as the Durable Object's table orders them.
+  const newest = [...records].sort((a, b) =>
+    Date.parse(b.ts) - Date.parse(a.ts) ||
+    (a.learningId < b.learningId ? 1 : a.learningId > b.learningId ? -1 : 0)
+  )
+  if (newest.length <= keep) return newest
+  const known = matched?.(newest.map((record) => record.learningId)) ?? new Set<string>()
+  const kept = new Set([
+    ...newest.filter((record) => known.has(record.learningId)),
+    ...newest.filter((record) => !known.has(record.learningId)),
+  ].slice(0, keep))
+  return newest.filter((record) => kept.has(record))
+}
+
+/** The ratings a portal keeps at `now`: within the window, newest first, at most the cap. */
+export function retainedFeedback(
+  records: readonly AnswerFeedback[],
+  now: number,
+  matched?: MatchedAnswers,
+): AnswerFeedback[] {
+  const cutoff = now - ANSWER_FEEDBACK_DAYS * DAY_MS
+  return keptRatings(
+    records.filter((record) => Date.parse(record.ts) >= cutoff),
+    ANSWER_FEEDBACK_KEEP,
+    matched,
+  )
+}
+
+/** A rating without its comment: what Insights counts and joins on. */
+export interface FeedbackRating {
+  learningId: string
+  good: boolean
+  ts: string
+}
+
+/** One answer a reader marked unhelpful, with the question it answered. */
+export interface FlaggedAnswer {
+  question: string
+  askedAt: string
+  ratedAt: string
+  /** The reader's comment, or null when they left none. */
+  comment: string | null
+}
+
+export interface FeedbackSummary {
+  /** Ratings of answers the ask log holds; a rating of an unknown answer is not counted. */
+  helpful: number
+  unhelpful: number
+  /** Unhelpful answers whose question the ask log still holds, newest first. */
+  flagged: FlaggedAnswer[]
+}
+
+/**
+ * How readers rated the portal's answers, and the unhelpful ones joined to their questions. It
+ * reads the ratings without their comments, then the comments of the answers it lists and no
+ * others, so one Insights read never loads every stored comment.
+ */
+export function feedbackSummary(
+  ratings: readonly FeedbackRating[],
+  questions: (learningIds: string[]) => Record<string, { question: string; ts: string }>,
+  comments: (learningIds: string[]) => Record<string, string>,
+): FeedbackSummary {
+  // Only ratings of answers this portal gave count: an id the ask log does not hold may be made
+  // up, and would let anyone inflate the counts.
+  const asked = ratings.length > 0 ? questions(ratings.map((r) => r.learningId)) : {}
+  const matched = ratings.filter((rating) => asked[rating.learningId])
+  const unhelpful = matched.filter((rating) => !rating.good)
+  const shown = unhelpful.slice(0, FLAGGED_ANSWERS_SHOWN)
+  const said = shown.length > 0 ? comments(shown.map((r) => r.learningId)) : {}
+  return {
+    helpful: matched.length - unhelpful.length,
+    unhelpful: unhelpful.length,
+    flagged: shown.map((rating) => ({
+      question: asked[rating.learningId]!.question,
+      askedAt: asked[rating.learningId]!.ts,
+      ratedAt: rating.ts,
+      comment: said[rating.learningId] ?? null,
+    })),
+  }
+}
+
+/**
+ * Answer feedback on the local server: one JSON file per portal, holding one record per answer,
+ * bounded by `retainedFeedback` on every write.
+ */
+export class FeedbackStore {
+  constructor(
+    private readonly dataDir = DATA_DIR,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  private pathFor(slug: string): string {
+    return join(this.dataDir, 'feedback', `${safeSegment(slug)}.json`)
+  }
+
+  private readAll(slug: string): AnswerFeedback[] {
+    const raw = readJson<unknown>(this.pathFor(slug), [])
+    return Array.isArray(raw)
+      ? raw.map(parseAnswerFeedback).filter((r): r is AnswerFeedback => r !== null)
+      : []
+  }
+
+  /**
+   * Keep a rating, replacing the same answer's earlier one, and drop what ages out. Past the cap,
+   * ratings of answers `matched` does not know go first.
+   */
+  record(slug: string, feedback: AnswerFeedback, matched?: MatchedAnswers): void {
+    const others = this.readAll(slug).filter((r) => r.learningId !== feedback.learningId)
+    writeJson(
+      this.pathFor(slug),
+      retainedFeedback([feedback, ...others], this.now(), matched),
+    )
+  }
+
+  /** The ratings kept for the portal, newest first, without their comments. */
+  ratings(slug: string): FeedbackRating[] {
+    return retainedFeedback(this.readAll(slug), this.now())
+      .map(({ learningId, good, ts }) => ({ learningId, good, ts }))
+  }
+
+  /** The comments readers left on the named answers. */
+  comments(slug: string, learningIds: readonly string[]): Record<string, string> {
+    const wanted = new Set(learningIds)
+    const found: Record<string, string> = {}
+    if (wanted.size === 0) return found
+    for (const record of retainedFeedback(this.readAll(slug), this.now())) {
+      if (record.text && wanted.has(record.learningId)) found[record.learningId] = record.text
+    }
+    return found
+  }
+
+  /**
+   * Remove every portal's ratings older than the window, for the daily maintenance pass: a
+   * reader's comment leaves after `ANSWER_FEEDBACK_DAYS` even on a portal no one rates again.
+   * Returns how many ratings it removed.
+   */
+  purgeExpired(): number {
+    const dir = join(this.dataDir, 'feedback')
+    let names: string[]
+    try {
+      names = readdirSync(dir).filter((name) => name.endsWith('.json'))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 0
+      throw error
+    }
+    let removed = 0
+    for (const name of names) {
+      const slug = name.slice(0, -'.json'.length)
+      const all = this.readAll(slug)
+      const kept = retainedFeedback(all, this.now())
+      if (kept.length === all.length) continue
+      removed += all.length - kept.length
+      if (kept.length === 0) eraseFile(this.pathFor(slug))
+      else writeJson(this.pathFor(slug), kept)
+    }
+    return removed
+  }
+
+  /** Remove the portal's ratings (see `PortalErasure`). */
+  erase(slug: string): number {
+    const segment = portalSegment(slug)
+    return eraseFile(segment && this.pathFor(segment))
   }
 }
 
@@ -1069,6 +1361,7 @@ export class McpKeyStore implements ScopedKeyStore {
 
 /** Public store contracts used by runtimes without a local filesystem. */
 export type InsightsStoreApi = Pick<InsightsStore, keyof InsightsStore>
+export type FeedbackStoreApi = Pick<FeedbackStore, keyof FeedbackStore>
 export type SessionsStoreApi = Pick<SessionsStore, keyof SessionsStore>
 export type WatchStoreApi = Pick<WatchStore, keyof WatchStore>
 export type SourceStoreApi = Pick<SourceStore, keyof SourceStore>

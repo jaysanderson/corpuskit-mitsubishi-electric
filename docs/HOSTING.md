@@ -208,6 +208,16 @@ to hide it again. A palette made for one organisation (`listed: false` in
 `packages/core/src/palettes.ts`) is refused with `400 {"error":"palette_not_available"}` unless
 the portal already uses it.
 
+A portal created in the app starts on the `corpuskit` palette. A portal on its own colours (no
+`paletteId`, or `"default"`) keeps those colours for its navigation band, accent and hero, but the
+text and focus drawn on them are chosen for contrast: accent and brand text are deepened until
+they read at 4.5:1 on the page, and text on the accent, the brand colour and the hero is white or
+dark ink, whichever reads better. A portal that was on its own colours before this derivation
+can therefore look slightly different after upgrading (links and citation markers a shade darker,
+dark text on a light accent where there was white), with nothing stored changed. The 7:1 bar for
+text on the brand colour and the hero, and the 3:1 navigation underline, still depend on the
+colours chosen; the library palettes meet them.
+
 Knowledge-box connection accepts
 `{"endpoint":"https://<region>.rag.progress.cloud/api/v1/kb/<box-id>","token":"<token>"}`
 and validates the binding with the provider before saving it. The existing `url` field remains
@@ -705,7 +715,8 @@ lifecycle records. Only the portal's own hostname is detached from the Worker; a
 left to the hosting operator that routed them. After that it revokes every
 member row and group mapping scoped to the portal, each recorded as an `assignment.delete` audit
 event, and every data key issued for it. The portal's other records (sources, enrichments, insights,
-suggestions, knowledge graph proposals, research sessions, investigations, watches and branding)
+answer feedback, suggestions, knowledge graph proposals, research sessions, investigations, watches
+and branding)
 stay stored under the retired slug, where no portal route can reach them, until they are
 [erased](#erasing-a-deleted-portal). Its audit events stay in the platform audit log until then
 too.
@@ -720,8 +731,8 @@ portals whenever they have no portal record. Deleting either one there is undone
 start: the portal comes back under the same slug with its seeded configuration, and the slug
 stays retired, so `POST /api/admin/tenants` still passes over it. The seed first clears every
 record the removed portal left stored under the slug (sources, enrichments and cached questions,
-insights, suggestions, knowledge graph proposals, research sessions, investigations, watches,
-branding and routing decisions), so the seeded portal starts empty. Its members, group mappings
+insights, answer feedback, suggestions, knowledge graph proposals, research sessions,
+investigations, watches, branding and routing decisions), so the seeded portal starts empty. Its members, group mappings
 and data keys were already revoked when it was deleted; the revoked key records and its audit
 events stay on record. No other Worker seeds portals.
 
@@ -1400,6 +1411,7 @@ a portal that has already been deleted, by the owner or by the operator route.
 | `watches` | Saved searches | `research-v2:…:watches` and `watches:<slug>` rows | `DATA_DIR/research-v2/`, `DATA_DIR/watches/<slug>.json` |
 | `sources` | The source registry | `sources:<slug>` row | `DATA_DIR/sources/<slug>.json` |
 | `insights` | The ask log, which holds the questions asked | `insights:<slug>` row | `DATA_DIR/insights/<slug>.jsonl` |
+| `feedback` | Readers' ratings of answers and their comments (one per answer, at most 500, ratings of answers the ask log does not hold dropped first, kept 90 days) | `answer_feedback` rows | `DATA_DIR/feedback/<slug>.json` |
 | `suggestions` | Setup suggestions | `suggestions:<slug>` row | `DATA_DIR/suggestions/<slug>.json` |
 | `enrichments` | Generated enrichments and cached suggested questions | `enrichment_records` rows, `enrichments:<slug>` row | `DATA_DIR/enrichments/<slug>.json` |
 | `kgProposals` | The last knowledge graph proposal | Entry in the `kg-proposals` row | Entry in `KG_PROPOSALS_PATH` |
@@ -1414,14 +1426,18 @@ Durable Object's SQLite database, not in R2 or another blob store, and locally i
 `BRANDING_PATH`. Stores that cache records in memory (bindings, enrichments, knowledge graph
 proposals and the local portal registry) drop them too.
 
+Answer feedback also leaves a live portal on its own: the daily maintenance pass (the one that
+applies `AUDIT_RETENTION_DAYS`) removes every rating older than 90 days, comment included, on
+every portal.
+
 ```json
 200 { "ok": true, "slug": "acme",
       "erased": { "configuration": 0, "aliases": 0, "bindings": 0, "lifecycle": 0,
                   "sessions": 12, "investigations": 3, "watches": 1, "sources": 1,
-                  "insights": 1, "suggestions": 1, "enrichments": 214, "kgProposals": 1,
-                  "branding": 2, "routing": 1, "mcpKeys": 1, "assignments": 0,
-                  "auditEvents": 318 },
-      "total": 557 }
+                  "insights": 1, "feedback": 3, "suggestions": 1, "enrichments": 214,
+                  "kgProposals": 1, "branding": 2, "routing": 1, "mcpKeys": 1,
+                  "assignments": 0, "auditEvents": 318 },
+      "total": 560 }
 ```
 
 `erased` always lists the kinds above, in that order. Each count is the number of stored records
