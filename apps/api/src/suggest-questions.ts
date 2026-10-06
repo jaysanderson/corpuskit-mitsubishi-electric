@@ -48,22 +48,46 @@ export async function generateStarterQuestions(
   angles: string[] = ANGLES,
 ): Promise<Question[]> {
   const perAngle = Math.max(2, Math.ceil(count / angles.length) + 1)
-  const batches = await Promise.all(angles.map(async (angle) => {
+  const ask = async (angle: string): Promise<string[]> => {
     const { object, insufficientGrounding } = await management.askStructured(
       config,
       SCHEMA,
       angle,
       { instructions: `${INSTRUCTIONS} Return exactly ${perAngle} questions.`, topK: 30 },
     )
-    if (insufficientGrounding) return [] as string[]
+    if (insufficientGrounding) return []
     const raw = (object as { questions?: unknown })?.questions
     return (Array.isArray(raw) ? raw : []).filter((q): q is string => typeof q === 'string')
-  }))
+  }
+  // One angle at a time, and one retry for an angle that came back empty or failed: parallel
+  // structured asks were observed to come back empty for some angles.
+  const batches: string[][] = []
+  for (const angle of angles) {
+    let batch = await ask(angle).catch(() => [] as string[])
+    if (batch.length === 0) batch = await ask(angle).catch(() => [] as string[])
+    console.log(JSON.stringify({ event: 'starter_questions_angle', angle, returned: batch.length }))
+    batches.push(batch)
+  }
   const seen = new Set<string>()
   const clean = (q: string) => q.replace(/^\s*\d+[.)]\s*/, '').trim()
-  const usable = (q: string) =>
-    q.length >= 10 && q.length <= 160 && q.endsWith('?') && !META.test(q) &&
-    !seen.has(q.toLowerCase()) && Boolean(seen.add(q.toLowerCase()))
+  const words = (q: string) => new Set(q.toLowerCase().match(/[a-z0-9-]{3,}/g) ?? [])
+  const kept: Set<string>[] = []
+  // A near-duplicate (most of its words already used by a kept question) is dropped.
+  const similar = (q: string) => {
+    const w = words(q)
+    return kept.some((k) => {
+      let shared = 0
+      for (const x of w) if (k.has(x)) shared++
+      return shared / Math.max(1, Math.min(w.size, k.size)) >= 0.6
+    })
+  }
+  const usable = (q: string) => {
+    if (q.length < 10 || q.length > 160 || !q.endsWith('?') || META.test(q)) return false
+    if (seen.has(q.toLowerCase()) || similar(q)) return false
+    seen.add(q.toLowerCase())
+    kept.push(words(q))
+    return true
+  }
   // Round-robin across the angles so each one is represented.
   const lists = batches.map((batch) => batch.map(clean).filter(usable))
   const picked: string[] = []
