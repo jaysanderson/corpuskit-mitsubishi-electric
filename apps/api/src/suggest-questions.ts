@@ -26,8 +26,18 @@ const INSTRUCTIONS = 'Give me questions that you can provide great answers for, 
   'were given, name the specific model, product, error code or procedure it concerns, be ' +
   'phrased the way a technician or customer would ask it, stand alone without the other ' +
   'questions, and be at most 110 characters. Cover different documents and different tasks ' +
-  '(installation, operation, servicing, troubleshooting, controls). Australian English. No ' +
-  'numbering, no answers.'
+  'within the topic you were asked about. Never mention the context, the documents or the ' +
+  'manuals themselves. Australian English. No numbering, no answers.'
+
+/** Retrieval angles, asked separately so the questions spread across the collection. */
+const ANGLES = [
+  'installation, commissioning and initial settings',
+  'troubleshooting, error codes, fault diagnosis and servicing',
+  'operation, remote controllers, Wi-Fi and everyday settings',
+]
+
+/** Questions that talk about the model's own context rather than the subject. */
+const META = /\b(context|provided|these documents|the documents|the manuals in)\b/i
 
 export async function generateStarterQuestions(
   management: AragProvider,
@@ -35,26 +45,33 @@ export async function generateStarterQuestions(
   config: TenantConfig,
   count = 6,
 ): Promise<Question[]> {
-  const query = `${config.branding.tagline}: installation, operation, servicing, ` +
-    'troubleshooting and error codes, controls and settings'
-  const { object, insufficientGrounding } = await management.askStructured(
-    config,
-    SCHEMA,
-    query,
-    { instructions: `${INSTRUCTIONS} Return exactly ${count} questions.`, topK: 40 },
-  )
-  if (insufficientGrounding) {
-    throw new Error('The knowledge box found nothing to ground questions on')
-  }
-  const raw = (object as { questions?: unknown })?.questions
+  const perAngle = Math.ceil(count / ANGLES.length) + 1
+  const batches = await Promise.all(ANGLES.map(async (angle) => {
+    const { object, insufficientGrounding } = await management.askStructured(
+      config,
+      SCHEMA,
+      `${config.branding.tagline}: ${angle}`,
+      { instructions: `${INSTRUCTIONS} Return exactly ${perAngle} questions.`, topK: 30 },
+    )
+    if (insufficientGrounding) return [] as string[]
+    const raw = (object as { questions?: unknown })?.questions
+    return (Array.isArray(raw) ? raw : []).filter((q): q is string => typeof q === 'string')
+  }))
   const seen = new Set<string>()
-  const questions = (Array.isArray(raw) ? raw : [])
-    .filter((q): q is string => typeof q === 'string')
-    .map((q) => q.replace(/^\s*\d+[.)]\s*/, '').trim())
-    .filter((q) => q.length >= 10 && q.length <= 160 && q.endsWith('?'))
-    .filter((q) => !seen.has(q.toLowerCase()) && seen.add(q.toLowerCase()))
-    .slice(0, count)
-    .map((text, i) => ({ id: `${config.slug}-sq${i + 1}`, text }))
+  const clean = (q: string) => q.replace(/^\s*\d+[.)]\s*/, '').trim()
+  const usable = (q: string) =>
+    q.length >= 10 && q.length <= 160 && q.endsWith('?') && !META.test(q) &&
+    !seen.has(q.toLowerCase()) && Boolean(seen.add(q.toLowerCase()))
+  // Round-robin across the angles so each one is represented.
+  const lists = batches.map((batch) => batch.map(clean).filter(usable))
+  const picked: string[] = []
+  for (let i = 0; picked.length < count && lists.some((l) => l.length > i); i++) {
+    for (const list of lists) {
+      const next = list[i]
+      if (next && picked.length < count) picked.push(next)
+    }
+  }
+  const questions = picked.map((text, i) => ({ id: `${config.slug}-sq${i + 1}`, text }))
   // Nothing usable keeps the questions the portal already has.
   if (questions.length === 0) return []
   tenants.patch(config.slug, { suggestedQuestions: questions })
