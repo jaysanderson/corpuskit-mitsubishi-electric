@@ -1,5 +1,5 @@
 /**
- * In-app user documentation for the research portal.
+ * In-app user documentation for the technical library.
  *
  * The documentation is authored here as a typed content module (rather than
  * loose Markdown files) so a single source of truth is importable by BOTH the
@@ -90,13 +90,13 @@ export const DOC_PAGES: DocPage[] = [
     id: 'getting-started',
     category: 'Getting started',
     title: 'Getting started',
-    summary: 'What the research portal is, how to choose a portal and find your way around.',
+    summary: 'What the technical library is, how to choose a portal and find your way around.',
     sections: [
       {
         heading: 'What this is',
-        body: 'The research portal is a fast, credible way to explore and question a body of ' +
-          'research. You ask a question in plain language and get an answer that is grounded in ' +
-          'real documents and cited back to them, then explore the underlying reports, projects ' +
+        body: 'The technical library is a fast, credible way to explore and question a body of ' +
+          'documentation. You ask a question in plain language and get an answer that is grounded in ' +
+          'real documents and cited back to them, then explore the underlying manuals, guides ' +
           'and the relationships between them.\n\n' +
           'Every portal runs on its own knowledge box - the connected content estate for one ' +
           'organisation. What you can search, ask and browse is exactly the content in that box, ' +
@@ -105,7 +105,7 @@ export const DOC_PAGES: DocPage[] = [
       {
         heading: 'Choosing a portal',
         body:
-          'You can run more than one portal, each on its own body of research. Switch between ' +
+          'You can run more than one portal, each on its own body of documentation. Switch between ' +
           'them from the **Knowledge boxes** menu at the top left of the header - open it from the ' +
           'name and logo in the corner. Each entry shows the organisation it belongs to, and the ' +
           'one you are in is ticked.\n\n' +
@@ -121,7 +121,7 @@ export const DOC_PAGES: DocPage[] = [
           '- **Library** - browse, sort and filter the whole corpus.\n' +
           '- **Ask** - a full, grounded conversation with saved sessions.\n' +
           '- **Graph** - a visual map of the corpus (titled the Knowledge map in the app).\n' +
-          "- **Tools** - connect MCP clients and other research tools to the portal's knowledge.\n" +
+          "- **Tools** - connect MCP clients and other tools to the portal's knowledge.\n" +
           '- **Help** - this documentation, with its own scoped search.\n' +
           '- **Manage** - administration (connecting content, taxonomy, enrichments and health).\n\n' +
           'Press **Cmd/Ctrl+K** anywhere to open the command palette and jump straight to a ' +
@@ -132,7 +132,7 @@ export const DOC_PAGES: DocPage[] = [
         heading: 'Exporting your work',
         body: 'Everything you produce can leave the portal as a file, and each export confirms ' +
           'itself with a short status line naming the file it saved:\n\n' +
-          '- **Ask** - **Export** on a session saves the whole research trail (questions, ' +
+          '- **Ask** - **Export** on a session saves the whole trail (questions, ' +
           'answers, sources and quality scores) as a Word document.\n' +
           '- **Investigations** - **Export to Word** saves the case with its evidence and ' +
           'synthesis as a Word document.\n' +
@@ -154,7 +154,8 @@ export const DOC_PAGES: DocPage[] = [
     sections: [
       {
         heading: 'Where the content comes from',
-        body: 'The portal reads one collection: research papers, their supplementary files and ' +
+        body:
+          'The portal reads one collection: technical manuals, data books, service guides and ' +
           "video material, loaded into the portal's knowledge index by the people who run it. " +
           'Nothing else is read. What you can search, ask and browse is exactly what is in that ' +
           'collection, and the Library shows the current count.\n\n' +
@@ -165,15 +166,15 @@ export const DOC_PAGES: DocPage[] = [
         heading: 'What happens when a document is added',
         body: 'Every document goes through the same steps before it can be found:\n\n' +
           '1. **Text and tables are extracted** from the file page by page, so a passage can ' +
-          'later be traced back to where it sits in the paper. Video material is transcribed.\n' +
+          'later be traced back to where it sits in the document. Video material is transcribed.\n' +
           '2. **Enrichment agents read the extracted text** and write a plain-language summary ' +
-          'and key takeaways, assign topic and study-design labels, label individual passages, ' +
-          'and record the relations between the entities the paper mentions (conditions, genes, ' +
-          'medications, researchers and institutions) for the knowledge graph.\n' +
+          'and key takeaways, assign topic and document-type labels, label individual passages, ' +
+          'and record the relations between the entities the document mentions (models, components, ' +
+          'refrigerants, error codes and procedures) for the knowledge graph.\n' +
           '3. **The document, its passages and its labels are indexed** for retrieval by meaning ' +
           'and by exact term.\n\n' +
           'The original file is never altered. The generated fields sit beside it and are shown ' +
-          "on the document page as generated fields, never as the paper's own words.",
+          "on the document page as generated fields, never as the document's own words.",
       },
       {
         heading: 'How a question is answered',
@@ -184,44 +185,44 @@ export const DOC_PAGES: DocPage[] = [
           'decision that always checks contraindications and monitoring; a broad question is an ' +
           'evidence review grounded on full text; a question about what is newest is answered ' +
           'newest first with the year stated; a question that names a table, a data sheet or a ' +
-          'protocol document reads the supplementary files beside the papers; everything else ' +
+          'protocol document reads the supplementary files beside the documents; everything else ' +
           'runs on the default configuration. The choice is shown beside the answer as a chip, ' +
           'and you can change it and ask again.\n' +
           '2. **The index returns the passages.** Before anything is retrieved, the portal ' +
           'resolves the things the question names against the collection: an antibody or ' +
           'antigen, a named consortium, registry or network, a trial acronym, a quoted title, a ' +
           'cohort you describe, and the medications and syndromes it knows. Where a name ' +
-          'identifies a small enough set of papers, **retrieval is restricted to those papers**, ' +
+          'identifies a small enough set of documents, **retrieval is restricted to those documents**, ' +
           'the way asking a question of a single document is restricted to that document, so a ' +
           "question about one antibody cannot be answered with a neighbouring cohort's figures: " +
-          "that cohort's paper is never in front of the answer at all. A name that titles " +
-          'many papers is a topic rather than a name and restricts nothing, and a medication on ' +
+          "that cohort's document is never in front of the answer at all. A name that titles " +
+          'many documents is a topic rather than a name and restricts nothing, and a medication on ' +
           'its own never restricts retrieval, because a drug name titles a laboratory study and ' +
-          'a clinical trial alike. Where a part of your question is not answered by the papers ' +
-          'the names resolved to, the paper that does answer it joins them. When the collection ' +
+          'a clinical trial alike. Where a part of your question is not answered by the documents ' +
+          'the names resolved to, the document that does answer it joins them. When the collection ' +
           'does not hold a study the question names, the answer says so rather than answering ' +
-          'from a paper that only cites it.\n' +
-          '3. **A question that asks for a number is answered one paper at a time.** A question ' +
+          'from a document that only cites it.\n' +
+          '3. **A question that asks for a number is answered one document at a time.** A question ' +
           'that asks for a rate, a proportion, an age or a comparison is first broken into its ' +
           'clauses - "compare brivaracetam and perampanel" is two questions, "how old were the ' +
           'participants and how many were female" is two clauses about one study - and each ' +
-          'clause is resolved to the one paper that answers it, using the names it uses and the ' +
-          'medications and conditions it mentions. Each clause is then answered from that paper ' +
+          'clause is resolved to the one document that answers it, using the names it uses and the ' +
+          'medications and conditions it mentions. Each clause is then answered from that document ' +
           'alone, the way a question about a single document is answered, and the answers are ' +
           'put together so that **every sentence carries exactly one citation**: no sentence ' +
-          'draws on two papers, because no part of the answer was written with two papers in ' +
-          'front of it. Where a clause has no paper, the answer says so for that clause and ' +
+          'draws on two documents, because no part of the answer was written with two documents in ' +
+          'front of it. Where a clause has no document, the answer says so for that clause and ' +
           'answers the rest. Questions that ask what the evidence is for something, rather than ' +
-          'for a number, are still answered across papers. A question that names no medication ' +
+          'for a number, are still answered across documents. A question that names no medication ' +
           'is never split by medication: "which medications are contraindicated in this ' +
           'syndrome" is one question, and where the collection holds a consensus statement or ' +
-          'guideline for the condition you name, that is the paper it is answered from.\n' +
+          'guideline for the condition you name, that is the document it is answered from.\n' +
           '4. **The answer is written only from those passages.** Nothing is drawn from general ' +
           'knowledge or from the internet. Every sentence that states a finding carries a ' +
           'citation to the passage it came from (an item in a list takes the citation of the ' +
-          'paragraph it belongs to), and opening the citation shows that passage in the paper. ' +
-          'A sentence carries a marker only for a paper that shares a distinctive phrase of ' +
-          'it, not merely its vocabulary, so a phrase every paper in the field uses lends no ' +
+          'paragraph it belongs to), and opening the citation shows that passage in the document. ' +
+          'A sentence carries a marker only for a document that shares a distinctive phrase of ' +
+          'it, not merely its vocabulary, so a phrase every document in the field uses lends no ' +
           'marker; where a sentence is left with none, the answer names that sentence under ' +
           'itself rather than leaving you to count markers.',
       },
@@ -230,66 +231,66 @@ export const DOC_PAGES: DocPage[] = [
         body: 'Before an answer is shown, the portal checks it against the cited text, sentence ' +
           'by sentence:\n\n' +
           '- **Figures.** Every number, percentage, dose and range in a sentence is first ' +
-          'located in the cited paper, and the sentence or table row that carries it there ' +
+          'located in the cited document, and the sentence or table row that carries it there ' +
           "must share the claim's own quantity - its outcome, the noun the figure measures or " +
           'the name the question asked about - about the same outcome, at the same follow-up, ' +
           'with the same responder threshold and the same denominator. The denominator is read ' +
           "from the figure's own sentence or table row, never from elsewhere in the paragraph: " +
-          'a number the paper writes as the count behind a share ("19 patients (28%)") agrees ' +
+          'a number the document writes as the count behind a share ("19 patients (28%)") agrees ' +
           'with a cohort size the answer pairs with it when the two make that share, and an ' +
-          'analysis set the answer names beside a figure the paper pairs no size with must be ' +
-          "the paper's own words. Where one sentence reports two arms, each figure belongs to " +
+          'analysis set the answer names beside a figure the document pairs no size with must be ' +
+          "the document's own words. Where one sentence reports two arms, each figure belongs to " +
           "the arm its own phrase names, so a placebo arm's rate is never served as the drug " +
           "arm's. The outcome must match " +
-          'exactly wherever the paper itself is exact: where a paper reports both "seizure ' +
+          'exactly wherever the document itself is exact: where a document reports both "seizure ' +
           'freedom" and "continuous seizure freedom", one does not stand for the other. A ' +
           'figure the cited ' +
-          'passage does not carry is looked for in the full text of the retrieved papers: where ' +
-          'one of them carries it beside the same claim, the sentence is cited to that paper ' +
+          'passage does not carry is looked for in the full text of the retrieved documents: where ' +
+          'one of them carries it beside the same claim, the sentence is cited to that document ' +
           'instead; where the figure is there but cannot be tied to the claim as the answer ' +
-          "stated it, the sentence is removed and that paper's own sentence on the outcome you " +
+          "stated it, the sentence is removed and that document's own sentence on the outcome you " +
           'asked about is quoted in its place. A figure found nowhere means the sentence is ' +
           'removed, and the answer says that it was. Removal is applied to the answer, not ' +
           'only recorded under it: a figure the note names has left the page, and a figure ' +
           'that still stands somewhere in the answer, verified where it stands, is not named ' +
-          'as removed. Where the check empties an answer altogether, the paper the removed ' +
+          'as removed. Where the check empties an answer altogether, the document the removed ' +
           'figure was found in is read before anything is declined, and the sentence that ' +
           'carries the figure there - from its own results, not its introduction, discussion ' +
           'or tables - is quoted and cited in place of the refusal.\n' +
-          '- **Populations.** A figure is bound to the group the paper reports it for. Where ' +
+          '- **Populations.** A figure is bound to the group the document reports it for. Where ' +
           'the passage a figure was found in names a group of its own, the group your question ' +
-          'asked about must be that group or narrower: a rate the paper reports for "patients ' +
+          'asked about must be that group or narrower: a rate the document reports for "patients ' +
           'with psychiatric comorbidity" is not the rate for "patients who switched from ' +
           'levetiracetam to brivaracetam", and a sentence that points back ("of these ' +
           'patients") is checked against the group the sentence before it named. When the ' +
-          'question names a cohort, trial or study, the papers that cohort names are the only ' +
-          "papers retrieval reads, so no sentence can carry another cohort's figure, and a " +
-          'figure the cited paper only quotes from other studies is removed rather than ' +
+          'question names a cohort, trial or study, the documents that cohort names are the only ' +
+          "documents retrieval reads, so no sentence can carry another cohort's figure, and a " +
+          'figure the cited document only quotes from other studies is removed rather than ' +
           'annotated. Where the question names no cohort, such a ' +
-          "figure is kept but marked as second-hand, with the paper's own finding beside it - " +
+          "figure is kept but marked as second-hand, with the document's own finding beside it - " +
           'and the marked sentence never leads the answer. What counts as second-hand is ' +
-          'judged by the words, not the section: a figure a paper states in its own voice ' +
+          'judged by the words, not the section: a figure a document states in its own voice ' +
           '("our cohort", "this trial", "we found"), reports in its own abstract, or prints ' +
           'beside the group it counted ("physicians: n = 19, 100%"), is that ' +
-          "paper's finding wherever the extraction placed it, and a paper with no results " +
+          "document's finding wherever the extraction placed it, and a document with no results " +
           'section of its own - a review, a consensus statement - is judged on those words ' +
           'alone. A finding the answer credits by ' +
-          'name to authors who did not write the paper cited beside it ("Rajna and Veres ' +
-          'showed ...") is that paper\'s account of earlier work, and is named as such under ' +
+          'name to authors who did not write the document cited beside it ("Rajna and Veres ' +
+          'showed ...") is that document\'s account of earlier work, and is named as such under ' +
           'the answer whether or not it carries a figure.\n' +
-          '- **Named studies.** A sentence cited to the wrong paper is replaced by the named ' +
-          "paper's own sentence only when that sentence carries the same figure at the same " +
+          '- **Named studies.** A sentence cited to the wrong document is replaced by the named ' +
+          "document's own sentence only when that sentence carries the same figure at the same " +
           'time point, quoted verbatim and cited; otherwise the sentence is removed, and a named ' +
-          'paper the answer never cited is read directly before anything is declined. A ' +
+          'document the answer never cited is read directly before anything is declined. A ' +
           'denominator the answer pairs with a figure is checked as part of the figure: a ' +
-          'pairing the paper contradicts is removed and said so, never rewritten, and a ' +
+          'pairing the document contradicts is removed and said so, never rewritten, and a ' +
           "denominator is only ever added from the figure's own bracket or table cell. When " +
-          'the papers that answer one question describe different populations, each sentence ' +
-          "says which paper it comes from; a protocol's planned recruitment is named as such " +
-          "beside the results paper's enrolment. A study the answer names that this collection " +
-          'holds no paper for, and that no cited paper mentions, has nothing behind it: that ' +
+          'the documents that answer one question describe different populations, each sentence ' +
+          "says which document it comes from; a protocol's planned recruitment is named as such " +
+          "beside the results document's enrolment. A study the answer names that this collection " +
+          'holds no document for, and that no cited document mentions, has nothing behind it: that ' +
           'sentence is removed and the answer says so. Reference lists are cut out of every ' +
-          'paper before the check reads it, so a title in a bibliography can never stand in for ' +
+          'document before the check reads it, so a title in a bibliography can never stand in for ' +
           'a finding.\n' +
           '- **Years and safety verbs.** A year must come from a cited resource. A ' +
           'medication the answer calls contraindicated must be called that, by name, in a cited ' +
@@ -305,10 +306,10 @@ export const DOC_PAGES: DocPage[] = [
           'check wrote is declined, with the closest matches, rather than shown.\n\n' +
           'While the answer is still streaming, its text is shown as unchecked (muted, with a ' +
           '"still streaming, the check follows" mark), its first complete sentence is checked ' +
-          'against the papers retrieval found and, when it passes, the paper that carries it is ' +
+          'against the documents retrieval found and, when it passes, the document that carries it is ' +
           'named under the answer; the checked answer then replaces the streamed text. A ' +
-          "follow-up in the same conversation carries the earlier answers' cited papers with " +
-          'it: a question about "that study" is answered from those papers, with their own ' +
+          "follow-up in the same conversation carries the earlier answers' cited documents with " +
+          'it: a question about "that study" is answered from those documents, with their own ' +
           'paragraphs and tables in front of the generator, and a request to put the earlier ' +
           'answers in a table keeps every row: each cell is checked under the column heading ' +
           'above it, so a figure filed under the wrong outcome is caught, and any cell the ' +
@@ -317,7 +318,7 @@ export const DOC_PAGES: DocPage[] = [
           'rather than the row dropped. Chat ' +
           'with a document runs the same check ' +
           "against that document's own text and shows the same badge.\n\n" +
-          'These checks are plain text comparisons against the extracted text of the papers, ' +
+          'These checks are plain text comparisons against the extracted text of the documents, ' +
           'with no language model in the loop, so the check cannot invent support. The ' +
           'confidence label under the answer is led by that check: an unverified figure, year ' +
           'or contraindication marks it low, removed sentences cap it at moderate, and high is ' +
@@ -325,7 +326,7 @@ export const DOC_PAGES: DocPage[] = [
           'well the answer addresses the question, how firmly it is grounded and how relevant ' +
           'the retrieved passages were can lower the label but never raise it, and is shown as ' +
           "the platform's self-assessment. The check decides: a fluent answer whose figures the " +
-          'cited papers do not carry is not shown as high confidence.',
+          'cited documents do not carry is not shown as high confidence.',
       },
       {
         heading: 'What you can do with it',
@@ -333,17 +334,17 @@ export const DOC_PAGES: DocPage[] = [
           'results alone.\n' +
           '- **Ask** is the full conversation: a grounded, cited answer, follow-ups that keep ' +
           'the context, saved sessions and deep research for broad questions.\n' +
-          '- **Library and the reader** browse the whole collection and open any paper at the ' +
+          '- **Library and the reader** browse the whole collection and open any document at the ' +
           'cited passage.\n' +
-          '- **Chat with a document** asks questions of one paper alone; its answers are checked ' +
+          '- **Chat with a document** asks questions of one document alone; its answers are checked ' +
           "against that document's own text and badged the same way.\n" +
-          '- **Investigations** gather evidence around a research question over time and ' +
+          '- **Investigations** gather evidence around a question over time and ' +
           'synthesise it.\n' +
           '- **Generate** writes a briefing, comparison, timeline or set of questions and ' +
           'answers from the collection, with references.\n' +
           '- **Assessment** builds a knowledge check on any area of the collection.\n' +
-          '- **The knowledge map** shows the conditions, genes, medications, researchers and ' +
-          'institutions in the collection and how they connect.\n' +
+          '- **The knowledge map** shows the models, components, refrigerants, error codes and ' +
+          'procedures in the collection and how they connect.\n' +
           '- **Watches** re-run a search or a question daily and flag it when the collection ' +
           'has something new.\n' +
           '- **Exports** take an answer trail, an investigation or a generated artefact out as ' +
@@ -357,7 +358,7 @@ export const DOC_PAGES: DocPage[] = [
           '- It says plainly when the collection does not hold something, and shows the closest ' +
           'passages it found, rather than filling the gap.\n' +
           '- It does not browse the internet. Every answer comes from the collection alone.\n' +
-          '- It does not change the papers. Extraction and enrichment sit beside the original, ' +
+          '- It does not change the documents. Extraction and enrichment sit beside the original, ' +
           'which stays exactly as published.',
       },
       {
@@ -472,10 +473,10 @@ export const DOC_PAGES: DocPage[] = [
           'stronger one.',
       },
       {
-        heading: 'Sessions and your research trail',
+        heading: 'Sessions and your question trail',
         body: 'Each conversation is saved as a session in the sidebar. Start a **new session**, ' +
           '**rename** one, **reopen** an earlier one, or **delete** one you no longer need. You ' +
-          'can **Export** a session as a Word-compatible document to keep the whole research ' +
+          'can **Export** a session as a Word-compatible document to keep the whole ' +
           'trail: questions, answers, sources and the quality scores. Ask exports to Word only; ' +
           'for a PDF, see Exporting your work under Getting started.',
       },
@@ -512,7 +513,7 @@ export const DOC_PAGES: DocPage[] = [
           'bracketed citation marker like [1] that links to the exact source passage, and the ' +
           'sources are listed beneath the answer. Citation numbers are assigned by the ' +
           "application, sentence by sentence, from the platform's own source attribution and " +
-          "the cited papers' text: a sentence keeps a marker only when the cited paper carries " +
+          "the cited documents' text: a sentence keeps a marker only when the cited document carries " +
           'its words, its figures and the names it hangs on, so the number you click resolves to ' +
           'a passage that grounds that claim. Markers never sit on headings, and an item in a ' +
           'list takes the citation of the paragraph it belongs to.',
@@ -522,23 +523,23 @@ export const DOC_PAGES: DocPage[] = [
         body:
           'Where an answer quotes figures, Ask checks them against the cited passages before the ' +
           'answer is complete. Every number, percentage, dose and range is located in the cited ' +
-          "paper, and the sentence or table row that carries it must share the claim's own " +
+          "document, and the sentence or table row that carries it must share the claim's own " +
           'quantity, about the same outcome, at the same follow-up, with the same responder ' +
           'threshold and the same denominator. A figure the cited passage does not carry is ' +
           'looked for in the full text ' +
-          'of the papers retrieval found, and if one carries it the sentence is cited to that ' +
-          'paper instead - and, under a restricted retrieval, only ever to one of the ' +
-          'papers the question named. A citation marker is only ever left on a paper whose ' +
-          "passage was where the sentence's figures were found: a marker on a paper that does " +
+          'of the documents retrieval found, and if one carries it the sentence is cited to that ' +
+          'document instead - and, under a restricted retrieval, only ever to one of the ' +
+          'documents the question named. A citation marker is only ever left on a document whose ' +
+          "passage was where the sentence's figures were found: a marker on a document that does " +
           'not carry the figure is dropped, and a sentence left with no marker is removed. A ' +
-          'figure the cited paper only quotes from other studies is removed rather than ' +
+          'figure the cited document only quotes from other studies is removed rather than ' +
           'footnoted when the question names a cohort.\n\n' +
           'A sentence whose figures cannot be verified anywhere is removed, and the answer says ' +
-          'so in a note beneath it, naming the figures. A sentence cited to the wrong paper is ' +
-          "replaced by the named paper's own sentence only when that sentence carries the same " +
+          'so in a note beneath it, naming the figures. A sentence cited to the wrong document is ' +
+          "replaced by the named document's own sentence only when that sentence carries the same " +
           'figure at the same time point, quoted verbatim and cited; a decline is never replaced. ' +
           'A denominator the answer paired with a figure is part of the figure: a pairing the ' +
-          'paper contradicts is removed and said so, never rewritten, and a denominator is only ' +
+          'document contradicts is removed and said so, never rewritten, and a denominator is only ' +
           "ever added from the figure's own bracket or table cell. A year must come from a " +
           'cited resource, and a medication called contraindicated must be called that, by name, ' +
           'in a cited passage: the verb is read with the medication nearest it, and a passage ' +
@@ -548,8 +549,8 @@ export const DOC_PAGES: DocPage[] = [
           'While the answer streams, its text is shown as unchecked, in muted ink with an ' +
           '"Unchecked - still streaming, the check follows" mark, so nothing on screen reads as ' +
           'the answer before it has been checked. Its first complete sentence is checked against ' +
-          'the papers retrieval found and, when it passes, "First sentence verified against" the ' +
-          'paper appears under that sentence; "Checking N figures" shows until the checked answer ' +
+          'the documents retrieval found and, when it passes, "First sentence verified against" the ' +
+          'document appears under that sentence; "Checking N figures" shows until the checked answer ' +
           'replaces the streamed text in full ink. Document chat answers carry the same check and ' +
           "badge, against the open document's text. The badge beneath the finished answer then " +
           'reads what happened: ' +
@@ -565,7 +566,7 @@ export const DOC_PAGES: DocPage[] = [
           'confidence** or **Confidence not scored**, and it stays loud and labelled while the ' +
           'news is bad: a low-confidence answer shows a warning you cannot miss, a high-confidence ' +
           'one a quiet tick.\n\n' +
-          "The label is led by the portal's own check of the answer against the cited papers. " +
+          "The label is led by the portal's own check of the answer against the cited documents. " +
           'An unverified figure, year or contraindication makes it low; removed sentences cap it ' +
           'at moderate; every figure found beside its claim, with most sentences carrying a ' +
           'citation, makes it high. High confidence is earned only by that check, never by a ' +
@@ -587,8 +588,8 @@ export const DOC_PAGES: DocPage[] = [
           'If the corpus does not hold enough relevant material to answer confidently, the portal ' +
           'says so before generating anything, names the closest matches it found in the text ' +
           'and lists them beneath the answer as closest matches, not used, rather than bluffing ' +
-          'an answer. A question about a relationship no held paper studies is declined as a ' +
-          'boundary, and a paper the question names is read directly before anything is declined. ' +
+          'an answer. A question about a relationship no held document studies is declined as a ' +
+          'boundary, and a document the question names is read directly before anything is declined. ' +
           'An honest "no direct evidence found" is a feature, not a failure.',
       },
       {
@@ -677,7 +678,7 @@ export const DOC_PAGES: DocPage[] = [
         heading: 'Exploring by region',
         body: 'A portal whose collection is organised by Australian state can also show an ' +
           '**Explore by region** band: a map of Australia and a list of the states, each asking ' +
-          'what research has been done there. It is off unless the portal administrator turns ' +
+          'what the collection covers there. It is off unless the portal administrator turns ' +
           'it on, so most portals do not show it.',
       },
     ],
@@ -697,8 +698,7 @@ export const DOC_PAGES: DocPage[] = [
       },
       {
         heading: 'Filtering and searching within',
-        body:
-          'Use the **Topics** list on the left to narrow the catalogue to one area of research. ' +
+        body: 'Use the **Topics** list on the left to narrow the catalogue to one area. ' +
           '(To filter by document kind, such as Report or Submission, use **Search** instead.) ' +
           'Type a query into **Search within the library** to look inside it - this uses real ' +
           'retrieval, the same engine as Search, rather than a weak title match, so it finds ' +
@@ -707,7 +707,7 @@ export const DOC_PAGES: DocPage[] = [
       {
         heading: 'What you see - and do not',
         body:
-          'Documents are meant to read as real research, not raw filenames: once the corpus has ' +
+          'Documents are meant to read as real titles, not raw filenames: once the corpus has ' +
           'been enriched, each one shows a proper title and summary in place of a code like ' +
           '`1981-071-DLD.pdf`. Until that enrichment has run, some cards fall back to the project ' +
           'code and file name.\n\n' +
@@ -730,7 +730,7 @@ export const DOC_PAGES: DocPage[] = [
           'generated, and the source itself in the viewer - a PDF reader, a web page, a video or ' +
           'audio player with transcript, or the extracted text, depending on what the document ' +
           'is. Use **Save to investigation** to keep the document with an active line of ' +
-          'research.',
+          'enquiry.',
       },
       {
         heading: 'Arriving from a citation',
@@ -757,7 +757,7 @@ export const DOC_PAGES: DocPage[] = [
       {
         heading: 'Related work',
         body: 'A **You might also want** rail surfaces related documents from the corpus so you ' +
-          'can follow a thread of connected research rather than returning to search each time.',
+          'can follow a thread of connected documents rather than returning to search each time.',
       },
     ],
   },
@@ -773,10 +773,10 @@ export const DOC_PAGES: DocPage[] = [
         body:
           'The **Graph** in the header opens the **Knowledge map**, a visual picture of how the ' +
           'corpus hangs together. It has two tabs:\n\n' +
-          '- **Entity graph** (the default) - the things the research is actually about.\n' +
+          '- **Entity graph** (the default) - the things the documents are actually about.\n' +
           '- **Concept map** - how the broad themes of the corpus overlap.\n\n' +
           'Both are drawn from the content itself rather than a hand-made diagram, so they ' +
-          'reflect the real structure of the research.',
+          'reflect the real structure of the collection.',
       },
       {
         heading: 'The entity graph',
@@ -795,7 +795,7 @@ export const DOC_PAGES: DocPage[] = [
         body:
           'The concept map steps back to the level of themes. Each node is a category - a topic ' +
           'or a document kind - and categories that share more resources sit closer together. ' +
-          'Pick one to see what it pairs with, so you can spot where areas of research meet.',
+          'Pick one to see what it pairs with, so you can spot where topics meet.',
       },
       {
         heading: 'Getting around',
@@ -809,12 +809,12 @@ export const DOC_PAGES: DocPage[] = [
     id: 'generate',
     category: 'Working with the portal',
     title: 'Tools',
-    summary: "Connect MCP clients to the portal's research through the knowledge box connector.",
+    summary: "Connect MCP clients to the portal's documents through the knowledge box connector.",
     sections: [
       {
         heading: 'The knowledge box MCP connector',
         body: "Tools hosts the portal's MCP connector. It gives any MCP-capable client - an " +
-          'agent framework, an IDE assistant, a desktop research tool - read-only access to ' +
+          'agent framework, an IDE assistant, a desktop assistant - read-only access to ' +
           "this portal's knowledge. A connected client can:\n\n" +
           '- **Search the corpus** - the same retrieval the portal itself uses.\n' +
           '- **Ask for cited answers** - grounded answers that carry their sources.\n' +
@@ -940,16 +940,15 @@ export const DOC_PAGES: DocPage[] = [
     id: 'investigations',
     category: 'Working with the portal',
     title: 'Investigations',
-    summary: 'Accumulate evidence around a research question over time.',
+    summary: 'Accumulate evidence around a question over time.',
     sections: [
       {
-        heading: 'A first-class research question',
-        body:
-          'An Investigation is a persistent research question that accumulates evidence as you ' +
+        heading: 'A first-class question',
+        body: 'An Investigation is a persistent question that accumulates evidence as you ' +
           'work, rather than a search you run once and lose. Give it a **name** and, if you like, ' +
-          'the **research question** it is trying to answer, then **Start investigation**. Mark ' +
+          'the **question** it is trying to answer, then **Start investigation**. Mark ' +
           'one as your **current** investigation with **Make current**, and **Close** or ' +
-          '**Delete** it when you are done. **Ask this question** hands the research question ' +
+          '**Delete** it when you are done. **Ask this question** hands the question ' +
           'straight to Ask.',
       },
       {
@@ -1077,18 +1076,18 @@ export const DOC_PAGES: DocPage[] = [
     id: 'help-and-this-documentation',
     category: 'Administration',
     title: 'About this documentation',
-    summary: 'How the Help section works and how it stays separate from research.',
+    summary: 'How the Help section works and how it stays separate from the library.',
     sections: [
       {
         heading: 'A dedicated, scoped help search',
         body: 'This Help section has its own search and its own AI assistant that answer "how do ' +
           'I..." questions about using the portal. It retrieves only from this documentation.\n\n' +
-          'Crucially, the documentation is kept entirely separate from research content: normal ' +
+          'Crucially, the documentation is kept entirely separate from library content: normal ' +
           'Search and Ask never retrieve or cite these help pages, and the ' +
-          'Help search never reaches into the research corpus. The two are isolated by dedicated, ' +
+          'Help search never reaches into the library. The two are isolated by dedicated, ' +
           'centrally-managed search configurations on the knowledge box, with a server-side ' +
           'cross-check as a safety net, so a question about the portal and a question about the ' +
-          'research never bleed into each other.',
+          'library never bleed into each other.',
       },
       {
         heading: 'Keeping it current',

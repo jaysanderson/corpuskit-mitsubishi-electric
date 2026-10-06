@@ -42,7 +42,7 @@ function headingFor(id: SectionId): string {
 type FlowStep = { title: string; detail: string }
 
 export const FLOW_STEPS: FlowStep[] = [
-  { title: 'The collection', detail: 'Papers, supplementary files and video material' },
+  { title: 'The collection', detail: 'Manuals, guides and technical videos' },
   {
     title: 'The index',
     detail: 'Text and tables extracted; summary, labels and relations written',
@@ -52,7 +52,7 @@ export const FLOW_STEPS: FlowStep[] = [
   { title: 'The answer', detail: 'Written from those passages only; every sentence cited' },
   {
     title: 'The check',
-    detail: 'Figures, cohorts and named studies verified; confidence labelled',
+    detail: 'Figures and named documents verified; confidence labelled',
   },
 ]
 
@@ -419,18 +419,18 @@ function tools(slug: string): Tool[] {
     },
     {
       title: 'Library and the reader',
-      detail: 'Browse the whole collection and open any paper at the cited passage.',
+      detail: 'Browse the whole collection and open any document at the cited passage.',
       path: `${base}/library`,
     },
     {
       title: 'Chat with a document',
       detail:
-        "Ask questions of one paper alone, from its page in the reader. Its answers are checked against that document's own text and badged the same way.",
+        "Ask questions of one document alone, from its page in the reader. Its answers are checked against that document's own text and badged the same way.",
       path: `${base}/library`,
     },
     {
       title: 'Investigations',
-      detail: 'Gather evidence around a research question over time and synthesise it.',
+      detail: 'Gather evidence around a question over time and synthesise it.',
       path: `${base}/investigations`,
     },
     {
@@ -447,7 +447,7 @@ function tools(slug: string): Tool[] {
     {
       title: 'The knowledge map',
       detail:
-        'The conditions, genes, medications, researchers and institutions in the collection, and how they connect.',
+        'The models, components, refrigerants, error codes and procedures in the collection, and how they connect.',
       path: `${base}/graph`,
     },
     {
@@ -515,7 +515,7 @@ export function HowItWorksPage() {
         </h1>
         <p className='mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2'>
           How {config.branding.productName}{' '}
-          turns a collection of papers into cited answers, and what it checks before it shows you
+          turns a collection of documents into cited answers, and what it checks before it shows you
           one.
         </p>
       </div>
@@ -535,9 +535,9 @@ export function HowItWorksPage() {
         <div className='min-w-0 space-y-10'>
           <Section id='content'>
             <P>
-              The portal reads one collection: research papers, their supplementary files and video
-              material, loaded into the portal's knowledge index by the people who run it. Nothing
-              else is read. What you can search, ask and browse is exactly what is in that
+              The portal reads one collection: technical manuals, data books and service guides, and
+              video material, loaded into the portal's knowledge index by the people who run it.
+              Nothing else is read. What you can search, ask and browse is exactly what is in that
               collection.
             </P>
             <P>
@@ -569,15 +569,15 @@ export function HowItWorksPage() {
                 <strong className='font-semibold text-ink'>Text and tables are extracted</strong>
                 {' '}
                 from the file page by page, so a passage can later be traced back to where it sits
-                in the paper. Video material is transcribed.
+                in the document. Video material is transcribed.
               </li>
               <li>
                 <strong className='font-semibold text-ink'>
                   Enrichment agents read the extracted text
                 </strong>{' '}
-                and write a plain-language summary and key takeaways, assign topic and study-design
+                and write a plain-language summary and key takeaways, assign topic and document-type
                 labels, label individual passages, and record the relations between the entities the
-                paper mentions (conditions, genes, medications, researchers and institutions) for
+                document mentions (models, components, refrigerants, error codes and procedures) for
                 the knowledge graph.
               </li>
               <li>
@@ -589,7 +589,7 @@ export function HowItWorksPage() {
             </Steps>
             <P>
               The original file is never altered. The generated fields sit beside it and are shown
-              on the document page as generated fields, never as the paper's own words.
+              on the document page as generated fields, never as the document's own words.
             </P>
           </Section>
 
@@ -609,18 +609,18 @@ export function HowItWorksPage() {
                 and by exact term, and ranks them. A study the question names by title or acronym is
                 looked up by name and pinned into the sources, so it cannot be crowded out of them;
                 when the collection does not hold that study, the answer says so rather than
-                answering from a paper that only cites it.
+                answering from a document that only cites it.
               </li>
               <li>
                 <strong className='font-semibold text-ink'>
-                  A question that asks for a number is answered one paper at a time.
+                  A question that asks for a number is answered one document at a time.
                 </strong>{' '}
                 A question that asks for a rate, a proportion, an age or a comparison is broken into
-                its clauses first, each clause is resolved to the one paper that answers it, and
-                each is answered from that paper alone. The answers are put together so that every
-                sentence carries exactly one citation: no sentence draws on two papers, because no
-                part of the answer was written with two papers in front of it. Where a clause has no
-                paper, the answer says so for that clause and answers the rest.
+                its clauses first, each clause is resolved to the one document that answers it, and
+                each is answered from that document alone. The answers are put together so that
+                every sentence carries exactly one citation: no sentence draws on two documents,
+                because no part of the answer was written with two documents in front of it. Where a
+                clause has no document, the answer says so for that clause and answers the rest.
               </li>
               <li>
                 <strong className='font-semibold text-ink'>
@@ -629,7 +629,7 @@ export function HowItWorksPage() {
                 Nothing is drawn from general knowledge or from the internet. Every sentence that
                 states a finding carries a citation to the passage it came from (an item in a list
                 takes the citation of the paragraph it belongs to), and opening the citation shows
-                that passage in the paper.
+                that passage in the document.
               </li>
             </Steps>
             {intents.length > 0
@@ -658,38 +658,38 @@ export function HowItWorksPage() {
               <Bullet>
                 <strong className='font-semibold text-ink'>Figures.</strong>{' '}
                 Every number, percentage, dose and range in a sentence is first located in the cited
-                paper, and the sentence or table row that carries it there must share the claim's
+                document, and the sentence or table row that carries it there must share the claim's
                 own quantity - its outcome, the noun the figure measures or the name the question
                 asked about - about the same outcome, at the same follow-up, with the same responder
                 threshold and the same denominator. A figure the cited passage does not carry is
-                looked for in the full text of the retrieved papers: where one of them carries it
-                beside the same claim, the sentence is cited to that paper instead; where the figure
-                is there but cannot be tied to the claim as the answer stated it, the sentence is
-                removed and that paper's own sentence on the outcome you asked about is quoted in
-                its place. A figure found nowhere means the sentence is removed, and the answer says
-                that it was.
+                looked for in the full text of the retrieved documents: where one of them carries it
+                beside the same claim, the sentence is cited to that document instead; where the
+                figure is there but cannot be tied to the claim as the answer stated it, the
+                sentence is removed and that document's own sentence on the outcome you asked about
+                is quoted in its place. A figure found nowhere means the sentence is removed, and
+                the answer says that it was.
               </Bullet>
               <Bullet>
                 <strong className='font-semibold text-ink'>Populations.</strong>{' '}
                 When the question names a cohort, trial or study, every sentence with a figure must
-                cite a paper about that cohort, and a figure the cited paper only quotes from other
-                studies is removed rather than annotated, so a figure from a different population
-                cannot be passed off as the one you asked about. Where the question names no cohort,
-                such a figure is kept but marked as second-hand, with the paper's own finding beside
-                it, so you can see what it rests on.
+                cite a document about that cohort, and a figure the cited document only quotes from
+                other studies is removed rather than annotated, so a figure from a different
+                population cannot be passed off as the one you asked about. Where the question names
+                no cohort, such a figure is kept but marked as second-hand, with the document's own
+                finding beside it, so you can see what it rests on.
               </Bullet>
               <Bullet>
                 <strong className='font-semibold text-ink'>Named studies.</strong>{' '}
-                A sentence cited to the wrong paper is replaced by the named paper's own sentence
-                only when that sentence carries the same figure at the same time point, quoted
-                verbatim and cited; otherwise the sentence is removed, and a named paper the answer
-                never cited is read directly before anything is declined. A denominator the answer
-                pairs with a figure is checked as part of the figure: a pairing the paper
-                contradicts is removed and said so, never rewritten, and a denominator is only ever
-                added from the figure's own bracket or table cell. When the papers that answer one
-                question describe different populations, each sentence says which paper it comes
-                from; a protocol's planned recruitment is named as such beside the results paper's
-                enrolment.
+                A sentence cited to the wrong document is replaced by the named document's own
+                sentence only when that sentence carries the same figure at the same time point,
+                quoted verbatim and cited; otherwise the sentence is removed, and a named document
+                the answer never cited is read directly before anything is declined. A denominator
+                the answer pairs with a figure is checked as part of the figure: a pairing the
+                document contradicts is removed and said so, never rewritten, and a denominator is
+                only ever added from the figure's own bracket or table cell. When the documents that
+                answer one question describe different populations, each sentence says which
+                document it comes from; a protocol's planned recruitment is named as such beside the
+                results document's enrolment.
               </Bullet>
               <Bullet>
                 <strong className='font-semibold text-ink'>Years and safety verbs.</strong>{' '}
@@ -706,26 +706,27 @@ export function HowItWorksPage() {
             <P>
               While the answer is still streaming, its text is shown as unchecked (muted, with a
               "still streaming, the check follows" mark), its first complete sentence is checked
-              against the papers retrieval found and, when it passes, the paper that carries it is
-              named under the answer; the checked answer then replaces the streamed text. A
-              follow-up in the same conversation carries the earlier answers' cited papers with it:
-              a question about "that study" is answered from those papers, with their own paragraphs
-              and tables in front of the generator, and a request to put the earlier answers in a
-              table keeps every row, with any cell the check could not verify - a figure it could
-              not tie to that row's source, or an analysis set name where the column asked for a
-              figure - marked "not verified" rather than the row dropped. Chat with a document runs
-              the same check against that document's own text and shows the same badge.
+              against the documents retrieval found and, when it passes, the document that carries
+              it is named under the answer; the checked answer then replaces the streamed text. A
+              follow-up in the same conversation carries the earlier answers' cited documents with
+              it: a question about "that study" is answered from those documents, with their own
+              paragraphs and tables in front of the generator, and a request to put the earlier
+              answers in a table keeps every row, with any cell the check could not verify - a
+              figure it could not tie to that row's source, or an analysis set name where the column
+              asked for a figure - marked "not verified" rather than the row dropped. Chat with a
+              document runs the same check against that document's own text and shows the same
+              badge.
             </P>
             <P>
-              These checks are plain text comparisons against the extracted text of the papers, with
-              no language model in the loop, so the check cannot invent support. The confidence
+              These checks are plain text comparisons against the extracted text of the documents,
+              with no language model in the loop, so the check cannot invent support. The confidence
               label under the answer is led by that check: an unverified figure, year or
               contraindication marks it low, removed sentences cap it at moderate, and high is
               earned only when every figure was found. The platform's own quality scoring of how
               well the answer addresses the question, how firmly it is grounded and how relevant the
               retrieved passages were can lower the label but never raise it, and is shown as the
               platform's self-assessment. The check decides: a fluent answer whose figures the cited
-              papers do not carry is not shown as high confidence.
+              documents do not carry is not shown as high confidence.
             </P>
           </Section>
 
@@ -744,7 +745,7 @@ export function HowItWorksPage() {
               <Bullet>
                 It says plainly when the collection does not hold something, and shows the closest
                 passages it found, rather than filling the gap. A study the question names that no
-                paper here reports is named in the decline.
+                document here reports is named in the decline.
               </Bullet>
               <Bullet>
                 When a sentence is removed, what rested on it goes too: the conclusion drawn from
@@ -754,7 +755,7 @@ export function HowItWorksPage() {
                 It does not browse the internet. Every answer comes from the collection alone.
               </Bullet>
               <Bullet>
-                It does not change the papers. Extraction and enrichment sit beside the original,
+                It does not change the documents. Extraction and enrichment sit beside the original,
                 which stays exactly as published.
               </Bullet>
             </ul>

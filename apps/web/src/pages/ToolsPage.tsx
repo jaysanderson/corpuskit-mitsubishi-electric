@@ -60,7 +60,7 @@ export function ToolsPage() {
       <header className='max-w-3xl'>
         <h1 className='rp-display text-3xl text-ink sm:text-4xl'>Tools</h1>
         <p className='mt-3 text-base leading-relaxed text-ink-2'>
-          Connect research tools to this portal's knowledge.
+          Connect your own tools to this portal's knowledge.
         </p>
       </header>
       <div className={`mt-8 grid min-w-0 gap-6 ${canExtract ? 'xl:grid-cols-2' : 'grid-cols-1'}`}>

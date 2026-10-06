@@ -58,6 +58,8 @@ export const BrandingSchema = z.object({
   productName: z.string().min(1),
   organisation: z.string().min(1),
   tagline: z.string().min(1),
+  /** Optional Explore hero headline; absent shows the stock invitation. */
+  headline: z.string().min(1).max(80).optional(),
   colours: z.object({
     /** All values are CSS colours. */
     primary: z.string(),

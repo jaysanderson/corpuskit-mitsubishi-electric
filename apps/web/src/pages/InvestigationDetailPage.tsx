@@ -550,7 +550,7 @@ function EvidenceCard(
   const sourceHref = `/t/${slug}/library/${encodeURIComponent(item.resourceId)}?passage=${
     encodeURIComponent(item.passage.slice(0, 200))
   }`
-  const askQuestion = item.question || `What does the research say about ${item.resourceTitle}?`
+  const askQuestion = item.question || `What do the documents say about ${item.resourceTitle}?`
   const askHref = `/t/${slug}/ask?ask=${encodeURIComponent(askQuestion)}`
 
   return (

@@ -142,7 +142,7 @@ export function intentSummary(intent: Intent): string {
       ? `only ${r.only.map((l) => l.label).join(', ')}`
       : r.exclude.length > 0
       ? `excl. ${r.exclude.map((l) => l.label).join(', ')}`
-      : 'all research',
+      : 'all documents',
     a.strategy === 'full'
       ? 'full text'
       : a.strategy === 'neighbours'

@@ -474,6 +474,7 @@ export class TenantStore {
       productName?: string
       organisation?: string
       tagline?: string
+      headline?: string
       colours?: TenantConfig['branding']['colours']
       typography?: TenantConfig['branding']['typography']
       shape?: TenantConfig['branding']['shape']
@@ -489,6 +490,7 @@ export class TenantStore {
       ...(branding.productName ? { productName: branding.productName } : {}),
       ...(branding.organisation ? { organisation: branding.organisation } : {}),
       ...(branding.tagline ? { tagline: branding.tagline } : {}),
+      ...(branding.headline ? { headline: branding.headline } : {}),
       ...(branding.colours ? { colours: branding.colours } : {}),
       ...(branding.typography ? { typography: branding.typography } : {}),
       ...(branding.shape ? { shape: branding.shape } : {}),

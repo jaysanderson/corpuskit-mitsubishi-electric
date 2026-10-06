@@ -379,6 +379,7 @@ export const DECLARATIONS: readonly Declaration[] = Object.freeze([
           'name',
           'organisation',
           'tagline',
+          'headline',
           'colours',
           'typography',
           'shape',

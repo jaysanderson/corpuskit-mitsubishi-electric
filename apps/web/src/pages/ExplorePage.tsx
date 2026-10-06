@@ -99,8 +99,15 @@ function Hero({
         <div className='min-w-0'>
           {isAcmd && <p className='rp-acmd-demo-label'>ACMD Research Portal · Demo</p>}
           <h1 className='rp-display rp-anim-rise text-4xl text-[var(--rp-on-hero)] sm:text-5xl lg:text-6xl'>
-            {isAcmd ? config.branding.tagline : 'What would you like to explore?'}
+            {isAcmd
+              ? config.branding.tagline
+              : config.branding.headline ?? 'What would you like to explore?'}
           </h1>
+          {!isAcmd && config.branding.headline && (
+            <p className='rp-anim-rise mt-4 max-w-2xl text-lg text-[var(--rp-on-hero)]/85'>
+              {config.branding.tagline}
+            </p>
+          )}
           {isAcmd && (
             <p className='rp-acmd-intro'>
               Explore connected knowledge. Ask a question, discover the evidence and follow it back

@@ -633,7 +633,7 @@ function EntityPanel({
         </Link>
         <Link
           to={`/t/${slug}/ask?ask=${
-            encodeURIComponent(`What does the research say about ${node.label}?`)
+            encodeURIComponent(`What do the documents say about ${node.label}?`)
           }`}
           className='rp-btn rp-btn-primary h-8 px-2.5 text-xs'
         >

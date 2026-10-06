@@ -67,7 +67,7 @@ describe('documentation content integrity', () => {
       const phrase of [
         'Text and tables are extracted',
         'Enrichment agents',
-        'study-design labels',
+        'document-type labels',
         'The question is routed',
         'The index returns the passages',
         'written only from those passages',
@@ -77,7 +77,7 @@ describe('documentation content integrity', () => {
         'can lower the label but never raise it',
         'never answers without a source',
         'does not browse the internet',
-        'does not change the papers',
+        'does not change the documents',
       ]
     ) {
       expect(text).toContain(phrase)

@@ -312,7 +312,7 @@ export function TenantLayout() {
       document.title = pageTitle(location.pathname, config.branding.productName)
     }
     return () => {
-      document.title = 'Research Portal'
+      document.title = 'Technical Library'
     }
   }, [config, location.pathname])
 

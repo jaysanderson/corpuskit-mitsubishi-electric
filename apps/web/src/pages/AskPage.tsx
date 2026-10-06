@@ -2802,7 +2802,7 @@ export function AskPage() {
                   <div className='mx-auto max-w-2xl text-center'>
                     <h1 className='rp-display text-3xl text-ink sm:text-4xl'>Ask</h1>
                     <p className='mt-2 text-sm leading-relaxed text-ink-2 sm:text-base'>
-                      Ask a question and get an answer grounded in this portal's research.
+                      Ask a question and get an answer grounded in this portal's documents.
                     </p>
                   </div>
                   {suggestions && suggestions.length > 0

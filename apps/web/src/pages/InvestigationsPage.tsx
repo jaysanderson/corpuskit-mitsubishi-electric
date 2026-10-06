@@ -180,7 +180,7 @@ export function InvestigationsPage() {
     <main className='rp-shell py-10'>
       <h1 className='text-2xl font-semibold tracking-tight text-ink'>Investigations</h1>
       <p className='mt-1 text-sm text-ink-3'>
-        Named research questions that accumulate evidence, sessions and outputs.
+        Named questions that gather evidence, sessions and outputs over time.
       </p>
 
       {access.can('portal.investigate', { kind: 'portal', slug: config.slug })

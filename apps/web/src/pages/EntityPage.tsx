@@ -132,7 +132,7 @@ export function EntityPage() {
   }, [data, name])
 
   const askHref = `/t/${config.slug}/ask?ask=${
-    encodeURIComponent(`What does the research say about ${name}?`)
+    encodeURIComponent(`What do the documents say about ${name}?`)
   }`
 
   return (

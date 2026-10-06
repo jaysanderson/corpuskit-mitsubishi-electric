@@ -36,7 +36,7 @@ Deno.test('the portal shell names its share image on the host that served it', a
   const images = shell.match(/<meta (?:property|name)="(?:og:image|twitter:image)"[^>]*>/g) ?? []
   expect(images).toHaveLength(2)
   for (const tag of images) {
-    expect(tag).toContain('content="https://__CORPUSKIT_REQUEST_HOST__/og/corpuskit.png"')
+    expect(tag).toContain('content="https://__CORPUSKIT_REQUEST_HOST__/og/mitsubishi-electric.png"')
   }
 })
 
@@ -107,7 +107,14 @@ Deno.test('About answers common questions, and marks up exactly the questions it
 })
 
 Deno.test('each share card is a 1200x630 PNG, and About and the docs use their own', async () => {
-  for (const card of ['corpuskit.png', 'corpuskit-about.png', 'corpuskit-docs.png']) {
+  for (
+    const card of [
+      'corpuskit.png',
+      'mitsubishi-electric.png',
+      'corpuskit-about.png',
+      'corpuskit-docs.png',
+    ]
+  ) {
     const bytes = await Deno.readFile(new URL(`../public/og/${card}`, import.meta.url))
     expect([...bytes.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10])
     const view = new DataView(bytes.buffer, bytes.byteOffset)

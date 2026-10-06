@@ -814,6 +814,7 @@ const renameTenantSchema = z.object({
   name: z.string().min(2).max(60).optional(),
   organisation: z.string().min(1).max(120).optional(),
   tagline: z.string().min(1).max(160).optional(),
+  headline: z.string().min(1).max(80).optional(),
   colours: z.object({
     primary: hexColour,
     accent: hexColour,
@@ -5080,6 +5081,7 @@ export function buildApp(opts: BuildAppOptions): Hono {
             productName: parsed.data.name,
             organisation: parsed.data.organisation,
             tagline: parsed.data.tagline,
+            headline: parsed.data.headline,
             typography: parsed.data.typography,
             shape: parsed.data.shape,
             textScale: parsed.data.textScale,
