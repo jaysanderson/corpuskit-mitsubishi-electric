@@ -25,7 +25,7 @@ const INSTRUCTIONS = 'Give me questions that you can provide great answers for, 
   'documents in the context only. Each question must be fully answerable from a passage you ' +
   'were given, name the specific model, product, error code or procedure it concerns, be ' +
   'phrased the way a technician or customer would ask it, stand alone without the other ' +
-  'questions, and be at most 110 characters. Cover different documents and different tasks ' +
+  'questions, ask about one thing only so that a single passage answers it completely, and be at most 110 characters. Cover different documents and different tasks ' +
   'within the topic you were asked about. Never mention the context, the documents or the ' +
   'manuals themselves. Australian English. No numbering, no answers.'
 
