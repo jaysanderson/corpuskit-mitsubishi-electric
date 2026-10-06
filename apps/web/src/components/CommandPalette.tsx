@@ -58,11 +58,6 @@ export function CommandPalette({
   const destinations = [
     ...([
       ['Library', 'library', canRead],
-      ['Graph', 'graph', canRead],
-      ['Investigations', 'investigations', canRead],
-      ['Tools', 'tools', canRead],
-      ['Generate', 'generate', canGenerate],
-      ['Assessment', 'assessment', canGenerate],
     ] as const).filter(([, , allowed]) => allowed).map(([label, path]) => ({
       label,
       href: `/t/${slug}/${path}`,

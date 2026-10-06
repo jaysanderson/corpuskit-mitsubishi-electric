@@ -429,28 +429,6 @@ function tools(slug: string): Tool[] {
       path: `${base}/library`,
     },
     {
-      title: 'Investigations',
-      detail: 'Gather evidence around a question over time and synthesise it.',
-      path: `${base}/investigations`,
-    },
-    {
-      title: 'Generate',
-      detail:
-        'A briefing, comparison, timeline or set of questions and answers from the collection, with references.',
-      path: `${base}/generate`,
-    },
-    {
-      title: 'Assessment',
-      detail: 'A knowledge check built on any area of the collection.',
-      path: `${base}/assessment`,
-    },
-    {
-      title: 'The knowledge map',
-      detail:
-        'The models, components, refrigerants, error codes and procedures in the collection, and how they connect.',
-      path: `${base}/graph`,
-    },
-    {
       title: 'Watches',
       detail:
         'Re-run a search or a question daily and flag it when the collection has something new.',

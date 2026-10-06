@@ -43,6 +43,12 @@ fly ssh console -a mitsubishi-electric-ac-library -C "sh -c 'curl -s -X POST \
 Large uploads are easiest from a local instance bound to the same knowledge box, or by removing the
 alias for the duration (`DELETE /api/admin/t/mitsubishi-electric/aliases/<host>`).
 
+## Scope of this build
+
+The menu, Explore tiles and command palette offer Library and Ask only. The knowledge graph is not
+provisioned (no `kg/propose` or `kg/implement`), and Graph, Tools, Investigations, Generate and
+Assessment are left out of the navigation.
+
 ## Portal copy
 
 The Explore hero headline is a portal setting (`headline` on `PATCH /api/admin/tenants/:slug`), with

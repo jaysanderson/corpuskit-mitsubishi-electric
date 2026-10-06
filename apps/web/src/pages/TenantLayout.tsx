@@ -45,15 +45,11 @@ function FullPageSpinner() {
   )
 }
 
-// Explore is reached by the logo and Help by its own icon.
+// Explore is reached by the logo and Help by its own icon. This build offers Library and Ask
+// only; the other surfaces stay routed but are not in the menu.
 const NAV_ITEMS: { path: string; label: string; end: boolean; permission: Permission }[] = [
   { path: '/library', label: 'Library', end: false, permission: 'portal.read' },
   { path: '/ask', label: 'Ask', end: false, permission: 'portal.ask' },
-  { path: '/graph', label: 'Graph', end: false, permission: 'portal.read' },
-  { path: '/tools', label: 'Tools', end: false, permission: 'portal.read' },
-  { path: '/investigations', label: 'Investigations', end: false, permission: 'portal.read' },
-  { path: '/generate', label: 'Generate', end: false, permission: 'portal.generate' },
-  { path: '/assessment', label: 'Assessment', end: false, permission: 'portal.generate' },
 ]
 
 // One name for the account control, read by both the header icon and the phone

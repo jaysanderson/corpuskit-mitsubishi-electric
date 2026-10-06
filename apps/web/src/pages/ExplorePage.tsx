@@ -296,13 +296,11 @@ function TileIcon({ name }: { name: keyof typeof TILE_ICONS }) {
   )
 }
 
-/** The four ways into the corpus, as brand-washed blocks under the hero. */
+/** The ways into the corpus, as brand-washed blocks under the hero. */
 function QuickEntry({ slug }: { slug: string }) {
   const tiles = [
     { to: 'library', label: 'Browse the library', icon: 'library' },
     { to: 'ask', label: 'Ask a question', icon: 'ask' },
-    { to: 'graph', label: 'Explore the graph', icon: 'graph' },
-    { to: 'investigations', label: 'Run an investigation', icon: 'investigations' },
   ] as const
 
   return (
