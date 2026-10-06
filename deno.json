@@ -43,6 +43,7 @@
     "semiColons": false,
     "exclude": [
       "content/",
+      "deploy/mitsubishi-electric/brand/",
       "docs/",
       "README.md",
       "CHANGELOG.md",

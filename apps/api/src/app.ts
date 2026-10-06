@@ -151,6 +151,7 @@ import {
   textCarriesQuote,
 } from './generate-sources.ts'
 import { analyseTenant } from './analyse.ts'
+import { generateStarterQuestions } from './suggest-questions.ts'
 import {
   type GraphStrategyInput,
   implementKgStrategy,
@@ -5017,6 +5018,34 @@ export function buildApp(opts: BuildAppOptions): Hono {
         })
       }
     })
+  })
+
+  // Ask the knowledge box for questions it answers well and cache them as the portal's
+  // suggested questions (the chips on Explore and Ask).
+  app.post(declaredRoute('POST', '/api/admin/t/:slug/suggested-questions/generate'), async (c) => {
+    const config = tenant(c.req.param('slug'))
+    if (!config) return c.json({ error: 'unknown_tenant' }, 404)
+    const unavailable = requireManagement(c)
+    if (unavailable) return unavailable
+    const body = await c.req.json().catch(() => ({})) as { count?: number }
+    const count = typeof body.count === 'number' && body.count >= 3 && body.count <= 8
+      ? Math.floor(body.count)
+      : 6
+    try {
+      const questions = await generateStarterQuestions(management!, tenants, config, count)
+      if (questions.length === 0) {
+        return c.json({
+          ok: false,
+          questions,
+          message: 'No well-grounded questions came back; the existing ones are kept.',
+        })
+      }
+      opts.invalidate?.(config.slug)
+      return c.json({ ok: true, questions })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'generation failed'
+      return c.json({ error: 'generation_failed', message }, 502)
+    }
   })
 
   app.patch(declaredRoute('PATCH', '/api/admin/tenants/:slug'), async (c) => {

@@ -368,6 +368,13 @@ export const DECLARATIONS: readonly Declaration[] = Object.freeze([
   entry('http', 'POST', '/api/admin/t/:slug/disable', 'behaviour.write', 'portal'),
   entry('http', 'POST', '/api/admin/t/:slug/enable', 'behaviour.write', 'portal'),
   entry('http', 'POST', '/api/admin/t/:slug/analyse', 'behaviour.write', 'portal'),
+  entry(
+    'http',
+    'POST',
+    '/api/admin/t/:slug/suggested-questions/generate',
+    'behaviour.write',
+    'portal',
+  ),
   entry('http', 'PATCH', '/api/admin/tenants/:slug', 'appearance.write', 'portal', {
     operator: true,
     subActions: [

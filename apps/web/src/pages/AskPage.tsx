@@ -3086,7 +3086,7 @@ export function AskPage() {
                 onKeyDown={handleKeyDown}
                 disabled={!canAsk || isStreaming}
                 rows={1}
-                placeholder={isCompact ? undefined : 'Ask a question about this research'}
+                placeholder={isCompact ? undefined : 'Ask a question about the manuals'}
                 className='max-h-40 min-w-0 flex-1 resize-none rounded-[var(--rp-radius)] border-0 bg-transparent px-2 py-2 text-sm text-ink placeholder:text-[var(--rp-ink-3)] focus:outline-none disabled:opacity-60 lg:px-3'
               />
               {isStreaming
