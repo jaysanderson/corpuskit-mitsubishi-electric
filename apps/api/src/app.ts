@@ -5027,12 +5027,23 @@ export function buildApp(opts: BuildAppOptions): Hono {
     if (!config) return c.json({ error: 'unknown_tenant' }, 404)
     const unavailable = requireManagement(c)
     if (unavailable) return unavailable
-    const body = await c.req.json().catch(() => ({})) as { count?: number }
+    const body = await c.req.json().catch(() => ({})) as { count?: number; angles?: unknown }
     const count = typeof body.count === 'number' && body.count >= 3 && body.count <= 8
       ? Math.floor(body.count)
       : 6
+    // Optional retrieval angles (what to ask about), each a short phrase.
+    const angles = Array.isArray(body.angles)
+      ? body.angles.filter((a): a is string => typeof a === 'string' && a.trim().length > 2)
+        .map((a) => a.trim().slice(0, 200)).slice(0, 8)
+      : []
     try {
-      const questions = await generateStarterQuestions(management!, tenants, config, count)
+      const questions = await generateStarterQuestions(
+        management!,
+        tenants,
+        config,
+        count,
+        angles.length ? angles : undefined,
+      )
       if (questions.length === 0) {
         return c.json({
           ok: false,

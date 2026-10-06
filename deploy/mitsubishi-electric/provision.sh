@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision the Mitsubishi Electric portal on a running CorpusKit instance.
 #   BASE=https://mitsubishi-electric-ac-library.fly.dev ADMIN_PASSCODE=... ./provision.sh [step...]
-# Steps: tenant brand alias fetch kb upload videos analyse  (default: tenant brand alias)
+# Steps: tenant brand alias fetch kb upload videos analyse questions  (default: tenant brand alias)
 # `kb` creates a knowledge box with the instance's ARAG_NUA_KEY and binds it.
 # `upload` sends every PDF under CORPUS_DIR (default ./corpus/pdf).
 set -euo pipefail
@@ -68,6 +68,11 @@ for v in json.load(open(sys.argv[1])): print(v["url"] + "\t" + v["title"])' "$HE
       json -X POST "$BASE/api/admin/t/$SLUG/resources/link" \
         -d "$(python3 -c 'import json,sys; print(json.dumps({"url": sys.argv[1], "title": sys.argv[2]}))' "$url" "$title")"
     done
+}
+step_questions() {
+  # Ask the knowledge box for questions it answers well and cache them as the chips on
+  # Explore and Ask (angles in questions.json).
+  json -X POST "$BASE/api/admin/t/$SLUG/suggested-questions/generate" -d @"$HERE/questions.json"
 }
 step_analyse() {
   # Reads the corpus and proposes topics, questions and entity types (server-sent events).

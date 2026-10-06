@@ -37,20 +37,22 @@ const ANGLES = [
 ]
 
 /** Questions that talk about the model's own context rather than the subject. */
-const META = /\b(context|provided|these documents|the documents|the manuals in)\b/i
+const META =
+  /\b(context|provided|supplied|material|answerable|these documents|the documents|the manuals in)\b/i
 
 export async function generateStarterQuestions(
   management: AragProvider,
   tenants: TenantStoreApi,
   config: TenantConfig,
   count = 6,
+  angles: string[] = ANGLES,
 ): Promise<Question[]> {
-  const perAngle = Math.ceil(count / ANGLES.length) + 1
-  const batches = await Promise.all(ANGLES.map(async (angle) => {
+  const perAngle = Math.max(2, Math.ceil(count / angles.length) + 1)
+  const batches = await Promise.all(angles.map(async (angle) => {
     const { object, insufficientGrounding } = await management.askStructured(
       config,
       SCHEMA,
-      `${config.branding.tagline}: ${angle}`,
+      angle,
       { instructions: `${INSTRUCTIONS} Return exactly ${perAngle} questions.`, topK: 30 },
     )
     if (insufficientGrounding) return [] as string[]
