@@ -1,0 +1,35 @@
+# Fly.io deployment of the Mitsubishi Electric air conditioning technical library.
+# Secrets (set with `fly secrets set`, never committed): ADMIN_PASSCODE, ADMIN_BREAK_GLASS,
+# BINDING_KEY, SESSION_SECRET, ARAG_ZONE, ARAG_ACCOUNT, ARAG_NUA_KEY.
+app = "mitsubishi-electric-ac-library"
+primary_region = "syd"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  DATA_DIR = "/app/data"
+  TRUST_PROXY_HOPS = "1"
+
+[[mounts]]
+  source = "corpuskit_data"
+  destination = "/app/data"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/health"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
