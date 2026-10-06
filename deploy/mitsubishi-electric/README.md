@@ -30,6 +30,19 @@ export BASE=https://mitsubishi-electric-ac-library.fly.dev ADMIN_PASSCODE=...
 `corpus/manifest.json` lists every document with its official source URL. The PDFs themselves are
 not committed; fetch them from the manifest into `corpus/pdf/` before `upload`.
 
+Once the host alias is registered, the Fly hostname serves the portal and strips the
+`x-admin-passcode` header, so later admin calls must not go through it. Run them inside the machine
+instead, for example:
+
+```sh
+fly ssh console -a mitsubishi-electric-ac-library -C "sh -c 'curl -s -X POST \
+  http://localhost:8787/api/admin/t/mitsubishi-electric/knowledge-box/create \
+  -H \"x-admin-passcode: \$ADMIN_PASSCODE\" -H content-type:application/json -d {}'"
+```
+
+Large uploads are easiest from a local instance bound to the same knowledge box, or by removing the
+alias for the duration (`DELETE /api/admin/t/mitsubishi-electric/aliases/<host>`).
+
 ## Portal copy
 
 The Explore hero headline is a portal setting (`headline` on `PATCH /api/admin/tenants/:slug`), with
