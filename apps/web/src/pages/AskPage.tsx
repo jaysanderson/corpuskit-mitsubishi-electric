@@ -299,11 +299,24 @@ function relativeAge(timestamp: number): string {
   return `${days}d ago`
 }
 
+/** Long enough for a whole question; the sidebar clamps it to two lines with CSS. */
+const SESSION_TITLE_MAX = 200
+
 function sessionTitle(session: ChatSession): string {
-  if (session.title && session.title.trim().length > 0) return session.title
   const first = session.messages.find((message) => message.author === 'USER')
-  if (!first || first.text.trim().length === 0) return 'New conversation'
-  return first.text.length > 60 ? `${first.text.slice(0, 60)}…` : first.text
+  const auto = first && first.text.trim().length > 0
+    ? first.text.length > SESSION_TITLE_MAX
+      ? `${first.text.slice(0, SESSION_TITLE_MAX)}…`
+      : first.text
+    : undefined
+  const stored = session.title?.trim()
+  // Titles saved before the limit was raised were the first 60 characters of the question
+  // plus an ellipsis, which cut the heading mid-word. Those give way to the whole question;
+  // a title the reader chose themselves is kept.
+  const truncatedAuto = stored && auto && stored.endsWith('…') &&
+    auto.startsWith(stored.slice(0, -1))
+  if (stored && !truncatedAuto) return stored
+  return auto ?? 'New conversation'
 }
 
 // ---------------------------------------------------------------------------
