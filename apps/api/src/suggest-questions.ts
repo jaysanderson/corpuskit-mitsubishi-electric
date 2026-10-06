@@ -79,13 +79,13 @@ export async function generateStarterQuestions(
   const words = (q: string) =>
     new Set((q.toLowerCase().match(/[a-z0-9-]{3,}/g) ?? []).filter((w) => !COMMON.has(w)))
   const kept: Set<string>[] = []
-  // A near-duplicate (most of its words already used by a kept question) is dropped.
+  // A near-duplicate (half or more of the two questions' distinct words shared) is dropped.
   const similar = (q: string) => {
     const w = words(q)
     return kept.some((k) => {
       let shared = 0
       for (const x of w) if (k.has(x)) shared++
-      return shared / Math.max(1, Math.min(w.size, k.size)) >= 0.6
+      return shared / Math.max(1, new Set([...w, ...k]).size) >= 0.5
     })
   }
   const usable = (q: string) => {
