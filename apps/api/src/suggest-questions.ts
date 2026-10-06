@@ -40,6 +40,12 @@ const ANGLES = [
 const META =
   /\b(context|provided|supplied|material|answerable|these documents|the documents|the manuals in)\b/i
 
+/** Words every question shares; they say nothing about whether two questions overlap. */
+const COMMON = new Set(
+  ('what how does the and for are can with when which why should mitsubishi electric air ' +
+    'conditioner conditioners conditioning unit units system systems indoor outdoor').split(' '),
+)
+
 export async function generateStarterQuestions(
   management: AragProvider,
   tenants: TenantStoreApi,
@@ -70,7 +76,8 @@ export async function generateStarterQuestions(
   }
   const seen = new Set<string>()
   const clean = (q: string) => q.replace(/^\s*\d+[.)]\s*/, '').trim()
-  const words = (q: string) => new Set(q.toLowerCase().match(/[a-z0-9-]{3,}/g) ?? [])
+  const words = (q: string) =>
+    new Set((q.toLowerCase().match(/[a-z0-9-]{3,}/g) ?? []).filter((w) => !COMMON.has(w)))
   const kept: Set<string>[] = []
   // A near-duplicate (most of its words already used by a kept question) is dropped.
   const similar = (q: string) => {
@@ -82,8 +89,19 @@ export async function generateStarterQuestions(
     })
   }
   const usable = (q: string) => {
-    if (q.length < 10 || q.length > 160 || !q.endsWith('?') || META.test(q)) return false
-    if (seen.has(q.toLowerCase()) || similar(q)) return false
+    const reason = q.length < 10 || q.length > 160
+      ? 'length'
+      : !q.endsWith('?')
+      ? 'not a question'
+      : META.test(q)
+      ? 'mentions the context'
+      : seen.has(q.toLowerCase()) || similar(q)
+      ? 'duplicate'
+      : undefined
+    if (reason) {
+      console.log(JSON.stringify({ event: 'starter_question_dropped', reason, question: q }))
+      return false
+    }
     seen.add(q.toLowerCase())
     kept.push(words(q))
     return true
